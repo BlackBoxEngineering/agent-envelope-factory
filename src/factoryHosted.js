@@ -16,6 +16,8 @@ import governanceDelegate from "../mint-delegate.governance.json";
 
 const API_BASE = import.meta.env.VITE_AE_API_BASE ?? "https://jemdjwteae.execute-api.us-east-1.amazonaws.com/v1";
 const SESSION_KEY = "agentenvelope:factory-hosted:v1";
+const ACTION_INDEX_COUNTER_KEY = "agentenvelope:factory-hosted:action-index:v1";
+const ROLE_COUNT = 4;
 
 const ROLE_DEFINITIONS = [
   {
@@ -59,6 +61,8 @@ const ROLE_DEFINITIONS = [
     mintMaterialEnv: () => import.meta.env.VITE_AE_PLANNER_MINT_MATERIAL,
   },
 ];
+
+const ROLE_VALIDATIONS = new Map(ROLE_DEFINITIONS.map((role) => [role.id, validateRoleDelegateOnce(role)]));
 
 function initialHostedConfig() {
   const saved = readSavedConfig();
@@ -115,13 +119,12 @@ function hostedConfigStatus(config) {
   }
 
   for (const role of ROLE_DEFINITIONS) {
-    try {
-      validateRoleDelegate(role);
-    } catch (err) {
+    const validation = ROLE_VALIDATIONS.get(role.id);
+    if (!validation?.valid) {
       return {
         ready: false,
         label: "invalid",
-        message: err instanceof Error ? err.message : `${role.label} delegate is invalid.`,
+        message: validation?.message ?? `${role.label} delegate is invalid.`,
       };
     }
   }
@@ -154,25 +157,40 @@ function hostedRoleSummaries(config) {
 }
 
 function validateRoleDelegate(role) {
-  const delegateWithMetadata = role.delegate;
-  const delegate = stripDelegateMetadata(delegateWithMetadata);
-  const delegateCheck = verifyMintDelegate(delegate, delegate.issuerAddress);
-  if (!delegateCheck.valid) throw new Error(`${role.label} delegate failed local verification: ${delegateCheck.reason}`);
+  const validation = ROLE_VALIDATIONS.get(role.id);
+  if (!validation?.valid) throw new Error(validation?.message ?? `${role.label} delegate is invalid.`);
+  return validation.delegate;
+}
 
-  for (const operation of role.operations) {
-    if (!delegate.allowedOperations?.includes(operation)) {
-      throw new Error(`${role.label} delegate must allow ${operation}.`);
+function validateRoleDelegateOnce(role) {
+  try {
+    const delegateWithMetadata = role.delegate;
+    const delegate = stripDelegateMetadata(delegateWithMetadata);
+    const delegateCheck = verifyMintDelegate(delegate, delegate.issuerAddress);
+    if (!delegateCheck.valid) throw new Error(`${role.label} delegate failed local verification: ${delegateCheck.reason}`);
+
+    for (const operation of role.operations) {
+      if (!delegate.allowedOperations?.includes(operation)) {
+        throw new Error(`${role.label} delegate must allow ${operation}.`);
+      }
     }
-  }
 
-  for (const resource of role.resources) {
-    if (!(delegate.allowedResources ?? []).some((allowed) => allowed === "*" || allowed === resource)) {
-      throw new Error(`${role.label} delegate must allow ${resource}.`);
+    for (const resource of role.resources) {
+      if (!(delegate.allowedResources ?? []).some((allowed) => allowed === "*" || allowed === resource)) {
+        throw new Error(`${role.label} delegate must allow ${resource}.`);
+      }
     }
-  }
 
-  if (!delegate.legitimacyRef?.required || !delegate.legitimacyRef?.legitimacyId) {
-    throw new Error(`${role.label} delegate must include a required legitimacyRef from hosted approval.`);
+    if (!delegate.legitimacyRef?.required || !delegate.legitimacyRef?.legitimacyId) {
+      throw new Error(`${role.label} delegate must include a required legitimacyRef from hosted approval.`);
+    }
+
+    return { valid: true, delegate };
+  } catch (err) {
+    return {
+      valid: false,
+      message: err instanceof Error ? err.message : `${role.label} delegate is invalid.`,
+    };
   }
 }
 
@@ -246,20 +264,56 @@ function buildHostedRecord({ ownerUserId, role, agentAddress, actionEnvelope }) 
   };
 }
 
-async function publishHostedFactoryCommand(config, command) {
-  const results = [];
+class HostedTrailPublishError extends Error {
+  constructor(message, records) {
+    super(message);
+    this.name = "HostedTrailPublishError";
+    this.records = records;
+  }
+}
 
-  for (const role of ROLE_DEFINITIONS) {
-    const result = await publishHostedRoleAction({
+async function publishHostedFactoryCommand(config, command, options = {}) {
+  const existingRecords = Array.isArray(options.existingRecords) ? options.existingRecords : [];
+  const completed = new Map(existingRecords.map((record) => [record.roleId, record]));
+
+  if (!completed.has("robot")) {
+    const robotRole = ROLE_DEFINITIONS.find((role) => role.id === "robot");
+    const robotResult = await publishHostedRoleAction({
+      config,
+      role: robotRole,
+      command,
+      action: buildRoleAction(robotRole, command, Array.from(completed.values())),
+      order: roleOrder(robotRole),
+    });
+    completed.set(robotResult.roleId, robotResult);
+  }
+
+  const parallelRoles = ROLE_DEFINITIONS.filter((role) => role.id !== "robot" && !completed.has(role.id));
+  if (parallelRoles.length > 0) {
+    const settled = await Promise.allSettled(parallelRoles.map((role) => publishHostedRoleAction({
       config,
       role,
       command,
-      action: buildRoleAction(role, command, results),
-      order: results.length,
+      action: buildRoleAction(role, command, Array.from(completed.values())),
+      order: roleOrder(role),
+    })));
+
+    settled.forEach((result) => {
+      if (result.status === "fulfilled") completed.set(result.value.roleId, result.value);
     });
-    results.push(result);
+
+    const failures = settled
+      .filter((result) => result.status === "rejected")
+      .map((result) => result.reason instanceof Error ? result.reason.message : "role publish failed");
+    if (failures.length > 0) {
+      throw new HostedTrailPublishError(
+        `Partial hosted trail: ${completed.size} of ${ROLE_COUNT} role records registered. ${failures.join(" ")}`,
+        sortRoleResults(Array.from(completed.values())),
+      );
+    }
   }
 
+  const results = sortRoleResults(Array.from(completed.values()));
   return {
     records: results,
     record: results[0]?.record,
@@ -271,48 +325,87 @@ async function publishHostedFactoryCommand(config, command) {
   };
 }
 
-async function publishHostedRoleAction({ config, role, command, action, order }) {
-  const delegateWithMetadata = role.delegate;
-  const delegate = stripDelegateMetadata(delegateWithMetadata);
-  const delegateCheck = verifyMintDelegate(delegate, delegate.issuerAddress);
-  if (!delegateCheck.valid) throw new Error(`${role.label} delegate failed local verification: ${delegateCheck.reason}`);
+function roleOrder(role) {
+  return Math.max(0, ROLE_DEFINITIONS.findIndex((candidate) => candidate.id === role.id));
+}
 
-  const now = Date.now() + order;
+function sortRoleResults(results) {
+  return [...results].sort((a, b) => {
+    const aOrder = ROLE_DEFINITIONS.findIndex((role) => role.id === a.roleId);
+    const bOrder = ROLE_DEFINITIONS.findIndex((role) => role.id === b.roleId);
+    return aOrder - bOrder;
+  });
+}
+
+function nextActionIndex(role, delegate, now) {
   const indexMin = delegate.actionIndexPolicy?.min ?? 0;
   const indexMax = delegate.actionIndexPolicy?.max ?? indexMin;
   if (indexMax < indexMin) throw new Error(`${role.label} delegate action index policy is invalid.`);
+
   const indexSpan = indexMax - indexMin + 1;
-  const actionIndex = indexMin + ((Math.floor(now / 1000) + order) % indexSpan);
+  const fallback = indexMin + ((Math.floor(now / 1000) + roleOrder(role)) % indexSpan);
+  const key = `${delegate.delegateId}:${role.id}`;
+  try {
+    const saved = window.sessionStorage.getItem(ACTION_INDEX_COUNTER_KEY);
+    const counters = saved ? JSON.parse(saved) : {};
+    const previous = Number.isInteger(counters[key]) ? counters[key] : fallback - 1;
+    const next = previous >= indexMax ? indexMin : Math.max(indexMin, previous + 1);
+    counters[key] = next;
+    window.sessionStorage.setItem(ACTION_INDEX_COUNTER_KEY, JSON.stringify(counters));
+    return next;
+  } catch {
+    return fallback;
+  }
+}
+
+async function publishHostedRoleAction({ config, role, command, action, order }) {
+  const delegate = validateRoleDelegate(role);
+
+  const now = Date.now() + order;
+  const actionIndex = nextActionIndex(role, delegate, now);
   const timeWindow = {
-    notBefore: now,
+    notBefore: now - 30_000,
     notAfter: Math.min(now + 5 * 60 * 1000, delegate.timeWindow.notAfter ?? now + 5 * 60 * 1000),
   };
   if (timeWindow.notAfter < timeWindow.notBefore) throw new Error(`${role.label} delegate is expired.`);
 
   const actionEnvelope = buildHostedEnvelope(role, action, actionIndex, timeWindow);
-  const request = buildMintRequest(hexToBytes(roleBotKey(config, role)), delegate, {
-    agentId: actionEnvelope.agentId,
-    operation: actionEnvelope.operation,
-    resources: actionEnvelope.resources,
-    actionIndex,
-    maxUses: 1,
-    timeWindow,
-    nonce: crypto.randomUUID(),
-    requestedAt: new Date().toISOString(),
-    ...(delegate.legitimacyRef?.legitimacyId ? { legitimacyId: delegate.legitimacyRef.legitimacyId } : {}),
-  });
+  let request;
+  const botKeyBytes = hexToBytes(roleBotKey(config, role).trim());
+  try {
+    request = buildMintRequest(botKeyBytes, delegate, {
+      agentId: actionEnvelope.agentId,
+      operation: actionEnvelope.operation,
+      resources: actionEnvelope.resources,
+      actionIndex,
+      maxUses: 1,
+      timeWindow,
+      nonce: crypto.randomUUID(),
+      requestedAt: new Date().toISOString(),
+      ...(delegate.legitimacyRef?.legitimacyId ? { legitimacyId: delegate.legitimacyRef.legitimacyId } : {}),
+    });
+  } finally {
+    botKeyBytes.fill(0);
+  }
 
   const requestCheck = verifyMintRequest(request, delegate);
   if (!requestCheck.valid) throw new Error(`${role.label} mint request failed local verification: ${requestCheck.reason}`);
 
   const receipt = await hostedMint(config.apiKey, delegate, request);
-  const capability = mintActionCapability(hexToBytes(roleMintMaterial(config, role)), delegate, request);
+  let capability;
+  const mintMaterialBytes = hexToBytes(roleMintMaterial(config, role).trim());
+  try {
+    capability = mintActionCapability(mintMaterialBytes, delegate, request);
+  } finally {
+    mintMaterialBytes.fill(0);
+  }
   const record = buildHostedRecord({
     ownerUserId: config.ownerUserId.trim(),
     role,
     agentAddress: capability.agentAddress,
     actionEnvelope,
   });
+  assertReceiptMatchesLocalCapability(role, receipt, record, capability);
   const payload = {
     ...action.payload,
     publicActionRecordId: record.recordId,
@@ -320,7 +413,13 @@ async function publishHostedRoleAction({ config, role, command, action, order })
     hosted: true,
     hostedReceiptId: receipt.mintId || receipt.receiptId || receipt.requestId,
   };
-  const signature = signAction(hexToBytes(capability.actionSeedHex), payload);
+  let signature;
+  const actionSeedBytes = hexToBytes(capability.actionSeedHex);
+  try {
+    signature = signAction(actionSeedBytes, payload);
+  } finally {
+    actionSeedBytes.fill(0);
+  }
   const localSignature = verifyAction({
     message: payload,
     signature,
@@ -329,14 +428,22 @@ async function publishHostedRoleAction({ config, role, command, action, order })
   if (!localSignature.valid) throw new Error(`${role.label} signature failed local verification.`);
 
   const registration = await hostedRegisterDelegated(config.apiKey, { record, request, delegateId: delegate.delegateId });
-  const report = await hostedVerify(config.apiKey, {
-    recordId: record.recordId,
-    agentId: record.agentId,
-    actionIndex,
-    payload,
-    signature,
-    expectedActionEnvelopeHash: record.actionEnvelopeHash,
-  });
+  let report;
+  try {
+    report = await hostedVerify(config.apiKey, {
+      recordId: record.recordId,
+      agentId: record.agentId,
+      actionIndex,
+      payload,
+      signature,
+      expectedActionEnvelopeHash: record.actionEnvelopeHash,
+    });
+  } catch (err) {
+    report = {
+      valid: false,
+      reason: err instanceof Error ? err.message : "Hosted verify failed after registration.",
+    };
+  }
 
   return {
     roleId: role.id,
@@ -435,6 +542,15 @@ async function hostedMint(apiKey, delegate, request) {
     },
     body: JSON.stringify({ delegate, request }),
   });
+}
+
+function assertReceiptMatchesLocalCapability(role, receipt, record, capability) {
+  if (receipt?.agentAddress && receipt.agentAddress.toLowerCase() !== capability.agentAddress.toLowerCase()) {
+    throw new Error(`${role.label} hosted mint receipt does not match locally derived agent address.`);
+  }
+  if (receipt?.actionEnvelopeHash && receipt.actionEnvelopeHash.toLowerCase() !== record.actionEnvelopeHash.toLowerCase()) {
+    throw new Error(`${role.label} hosted mint receipt does not match the local action envelope hash.`);
+  }
 }
 
 async function hostedRegisterDelegated(apiKey, input) {

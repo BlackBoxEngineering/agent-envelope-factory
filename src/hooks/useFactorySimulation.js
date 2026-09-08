@@ -38,7 +38,7 @@ function useFactorySimulation() {
   const timersRef = useRef([]);
   const latestTrolleysRef = useRef(initialTrolleys);
   const hostedInFlightRef = useRef(new Set());
-  const hostedPublishedRef = useRef(new Set());
+  const hostedResultsRef = useRef(new Map());
   const [trolleys, setTrolleysState] = useState(initialTrolleys);
   const [robot, setRobot] = useState(initialRobot);
   const [phase, setPhase] = useState("ready");
@@ -123,7 +123,7 @@ function useFactorySimulation() {
     setDrag(null);
     setActiveRun(null);
     hostedInFlightRef.current.clear();
-    hostedPublishedRef.current.clear();
+    hostedResultsRef.current.clear();
     setHostedPublishing(false);
     setHostedStatus({ ...hostedConfigStatus(hostedConfig), recordUrl: "", ledgerUrl: "" });
     setStatus({
@@ -186,7 +186,8 @@ function useFactorySimulation() {
     }
 
     const commandKey = command.commandId;
-    if (!manual && (hostedPublishedRef.current.has(commandKey) || hostedInFlightRef.current.has(commandKey))) {
+    const existingRecords = hostedResultsRef.current.get(commandKey) ?? [];
+    if (!manual && (existingRecords.length >= hostedRoles.length || hostedInFlightRef.current.has(commandKey))) {
       return;
     }
 
@@ -203,10 +204,10 @@ function useFactorySimulation() {
     });
 
     try {
-      const result = await publishHostedFactoryCommand(hostedConfig, command);
+      const result = await publishHostedFactoryCommand(hostedConfig, command, { existingRecords });
       const primary = result.records.find((item) => item.roleId === "robot") ?? result.records[0];
       const allValid = result.records.every((item) => item.report.valid);
-      hostedPublishedRef.current.add(commandKey);
+      hostedResultsRef.current.set(commandKey, result.records);
       setActiveRun((current) => current?.command?.commandId === commandKey
         ? {
           ...current,
@@ -241,17 +242,38 @@ function useFactorySimulation() {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Hosted publish failed.";
+      const partialRecords = Array.isArray(err?.records) ? err.records : [];
+      if (partialRecords.length > 0) {
+        hostedResultsRef.current.set(commandKey, partialRecords);
+        const primary = partialRecords.find((item) => item.roleId === "robot") ?? partialRecords[0];
+        setActiveRun((current) => current?.command?.commandId === commandKey
+          ? {
+            ...current,
+            hostedRecordId: primary?.record.recordId,
+            hostedReportValid: false,
+            hostedRecords: partialRecords.map((item) => ({
+              role: item.roleLabel,
+              recordId: item.record.recordId,
+              valid: item.report.valid,
+            })),
+          }
+          : current);
+      }
       setHostedStatus({ ready: false, label: "failed", message, recordUrl: "", ledgerUrl: "" });
       setConsoleState((current) => ({
         ...current,
-        portal: `AuthorityHead hosted publish\nfailed: ${message}`,
+        portal: [
+          "AuthorityHead hosted publish",
+          partialRecords.length > 0 ? `partial: ${partialRecords.length} role records registered` : "",
+          `failed: ${message}`,
+        ].filter(Boolean).join("\n"),
       }));
       addEvent("bad", `Hosted publish failed: ${message}`);
     } finally {
       hostedInFlightRef.current.delete(commandKey);
       setHostedPublishing(hostedInFlightRef.current.size > 0);
     }
-  }, [addEvent, hostedConfig]);
+  }, [addEvent, hostedConfig, hostedRoles.length]);
 
   const publishHostedCurrent = useCallback(async () => {
     await publishHostedCommand(activeRun?.command, { manual: true });
