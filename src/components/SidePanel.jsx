@@ -32,6 +32,8 @@ function SidePanel({
         <ActorFlowPanel activeRun={activeRun} phase={phase} status={status} />
         <OperationStatePanel status={status} />
         <DisruptionPanel onScenarioBug={onScenarioBug} />
+        <HackConsole consoleState={consoleState} onHackAttempt={onHackAttempt} />
+        <AuthorityHeadPanel consoleState={consoleState} onPortalAction={onPortalAction} />
       </aside>
     );
   }
@@ -42,11 +44,9 @@ function SidePanel({
 
   return (
     <aside className="side-panel right-panel">
+      <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
       <CurrentRecordPanel activeRun={activeRun} trolley4Slot={trolley4Slot} />
       <AuthorityTracePanel activeRun={activeRun} />
-      <HackConsole consoleState={consoleState} onHackAttempt={onHackAttempt} />
-      <AuthorityHeadPanel consoleState={consoleState} onPortalAction={onPortalAction} />
-      <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
     </aside>
   );
 }
