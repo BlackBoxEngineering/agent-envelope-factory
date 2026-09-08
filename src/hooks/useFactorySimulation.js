@@ -24,6 +24,14 @@ import {
   patchStateForMismatch,
   verifySignedCommand,
 } from "../factoryAuthority.js";
+import {
+  clearHostedConfig,
+  hostedConfigStatus,
+  hostedRoleSummaries,
+  initialHostedConfig,
+  publishHostedFactoryCommand,
+  saveHostedConfig,
+} from "../factoryHosted.js";
 
 function useFactorySimulation() {
   const floorRef = useRef(null);
@@ -48,6 +56,14 @@ function useFactorySimulation() {
     hack: "$ hack-robot --target command\nwaiting for a signed command",
     portal: "AuthorityHead portal online\nno hosted action selected",
   });
+  const [hostedConfig, setHostedConfig] = useState(() => initialHostedConfig());
+  const [hostedStatus, setHostedStatus] = useState(() => ({
+    ...hostedConfigStatus(initialHostedConfig()),
+    recordUrl: "",
+    ledgerUrl: "",
+  }));
+  const [hostedPublishing, setHostedPublishing] = useState(false);
+  const hostedRoles = useMemo(() => hostedRoleSummaries(hostedConfig), [hostedConfig]);
 
   const setTrolleys = useCallback((updater) => {
     setTrolleysState((current) => {
@@ -117,6 +133,105 @@ function useFactorySimulation() {
       portal: "AuthorityHead portal online\nno hosted action selected",
     });
   }, [clearTimers, setTrolleys]);
+
+  const updateHostedConfig = useCallback((patch) => {
+    setHostedConfig((current) => {
+      const next = { ...current, ...patch };
+      setHostedStatus({ ...hostedConfigStatus(next), recordUrl: "", ledgerUrl: "" });
+      return next;
+    });
+  }, []);
+
+  const saveHostedSession = useCallback(() => {
+    saveHostedConfig(hostedConfig);
+    setHostedStatus({ ...hostedConfigStatus(hostedConfig), recordUrl: "", ledgerUrl: "" });
+    addEvent("info", "Hosted factory settings saved for this browser session.");
+  }, [addEvent, hostedConfig]);
+
+  const clearHostedSession = useCallback(() => {
+    clearHostedConfig();
+    const next = initialHostedConfig();
+    setHostedConfig(next);
+    setHostedStatus({ ...hostedConfigStatus(next), recordUrl: "", ledgerUrl: "" });
+    addEvent("info", "Hosted factory session settings cleared.");
+  }, [addEvent]);
+
+  const publishHostedCurrent = useCallback(async () => {
+    const readiness = hostedConfigStatus(hostedConfig);
+    if (!readiness.ready) {
+      setHostedStatus({ ...readiness, recordUrl: "", ledgerUrl: "" });
+      addEvent("warn", readiness.message);
+      return;
+    }
+    if (!activeRun?.command) {
+      setHostedStatus({
+        ready: false,
+        label: "waiting",
+        message: "Run or reroute a signed factory command before publishing hosted evidence.",
+        recordUrl: "",
+        ledgerUrl: "",
+      });
+      addEvent("warn", "Hosted publish requested before a factory command existed.");
+      return;
+    }
+
+    setHostedPublishing(true);
+    setHostedStatus({
+      ready: true,
+      label: "publishing",
+      message: "Minting, registering, and verifying the current factory command...",
+      recordUrl: "",
+      ledgerUrl: "",
+    });
+
+    try {
+      const result = await publishHostedFactoryCommand(hostedConfig, activeRun.command);
+      const primary = result.records.find((item) => item.roleId === "robot") ?? result.records[0];
+      const allValid = result.records.every((item) => item.report.valid);
+      setActiveRun((current) => current?.command?.commandId === activeRun.command.commandId
+        ? {
+          ...current,
+          hostedRecordId: primary?.record.recordId,
+          hostedReportValid: allValid,
+          hostedRecords: result.records.map((item) => ({
+            role: item.roleLabel,
+            recordId: item.record.recordId,
+            valid: item.report.valid,
+          })),
+        }
+        : current);
+      setHostedStatus({
+        ready: true,
+        label: allValid ? "published" : "registered",
+        message: allValid
+          ? `Hosted authority trail published: ${result.records.length} role records registered and verified.`
+          : `Hosted authority trail registered; at least one role verify returned invalid.`,
+        recordUrl: result.links.record,
+        ledgerUrl: result.links.ledger,
+      });
+      setConsoleState((current) => ({
+        ...current,
+        portal: [
+          "AuthorityHead hosted publish",
+          ...result.records.map((item) => `${item.roleLabel}: ${item.record.recordId} / ${item.report.valid ? "valid" : "invalid"}`),
+        ].join("\n"),
+      }));
+      result.records.forEach((item) => {
+        addEvent("ok", `${item.roleLabel} hosted record registered: ${item.record.recordId}.`);
+        addEvent(item.report.valid ? "ok" : "warn", `${item.roleLabel} hosted verification ${item.report.valid ? "accepted" : "returned invalid"}.`);
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Hosted publish failed.";
+      setHostedStatus({ ready: false, label: "failed", message, recordUrl: "", ledgerUrl: "" });
+      setConsoleState((current) => ({
+        ...current,
+        portal: `AuthorityHead hosted publish\nfailed: ${message}`,
+      }));
+      addEvent("bad", `Hosted publish failed: ${message}`);
+    } finally {
+      setHostedPublishing(false);
+    }
+  }, [activeRun, addEvent, hostedConfig]);
 
   const recoverWithFreshCommand = useCallback(
     (source) => {
@@ -796,6 +911,16 @@ function useFactorySimulation() {
       activeRun,
       consoleState,
       events,
+      hosted: {
+        config: hostedConfig,
+        onChange: updateHostedConfig,
+        onClear: clearHostedSession,
+        onPublish: publishHostedCurrent,
+        onSave: saveHostedSession,
+        publishing: hostedPublishing,
+        roles: hostedRoles,
+        status: hostedStatus,
+      },
       onHackAttempt: runHackAttempt,
       onPortalAction: runPortalAction,
       onScenarioBug: runScenarioBug,

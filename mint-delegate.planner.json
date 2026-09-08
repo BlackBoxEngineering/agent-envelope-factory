@@ -1,0 +1,52 @@
+{
+  "type": "agentenvelope.mintDelegate",
+  "version": 1,
+  "delegateId": "ae-delegate-4bd69477e1b91449",
+  "legitimacyRef": {
+    "legitimacyId": "ae-legit-350bf25a93d09779",
+    "stateVersion": 1,
+    "stateHash": "0xadbf494df5fe34f1743ad60c71d5ce309470768e17ac2e682945bfa1962e9ce7",
+    "policyId": "manual-approval",
+    "required": true
+  },
+  "issuerAddress": "0xae5303f858f4b3b4c43f7857882b42e25965f53d",
+  "avatarAddress": "0xa897c2abe7c613e3fd0b5f37bf06184720a2c596",
+  "domainHash": "0x3eaea64cf6559715fae19509f49005e6eb232644c98ea6a64814c5ca2d9ad380",
+  "allowedOperations": [
+    "propose-reroute",
+    "request-correction"
+  ],
+  "allowedResources": [
+    "bay:*",
+    "trolley:*",
+    "command:*"
+  ],
+  "botPolicy": "any-signed-bot",
+  "actionIndexPolicy": {
+    "min": 0,
+    "max": 10000
+  },
+  "maxMints": 500,
+  "maxUsesPerAction": 1,
+  "timeWindow": {
+    "notBefore": 1788858892081,
+    "notAfter": 1844669460000
+  },
+  "nonce": "0x4f4fc13ec65878d1f2f228b47f15abd55591b948739496ca41d510f086b6a8eb",
+  "issuedAt": "2026-09-08T09:14:52.081Z",
+  "domainSummary": {
+    "domainInfo": {
+      "type": "agentenvelope.domainInfo",
+      "version": 1,
+      "namespace": "factory-automation",
+      "domainId": "logistic-control",
+      "kind": "robotics"
+    },
+    "canonicalDomainInfo": "{\"domainId\":\"logistic-control\",\"kind\":\"robotics\",\"namespace\":\"factory-automation\",\"type\":\"agentenvelope.domainInfo\",\"version\":1}",
+    "domainHash": "0x3eaea64cf6559715fae19509f49005e6eb232644c98ea6a64814c5ca2d9ad380",
+    "domainAddress": "0xae5303f858f4b3b4c43f7857882b42e25965f53d",
+    "domainFingerprint": "ae-domain-2a32f2bfc7405890",
+    "createdAt": "2026-09-08T09:11:02.512Z"
+  },
+  "issuerSignature": "0x6e76a73605a610ce2479fe85ee6e8129791b4d78377cb899072ded46291f2d310b317ec78f7ba62358f65ef74769c996b160977f1ac07ef1b5499605761fd61e1c"
+}

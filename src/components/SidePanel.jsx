@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   Globe2,
   KeyRound,
+  Link2,
   RadioTower,
   Route,
   ShieldCheck,
@@ -16,6 +17,7 @@ function SidePanel({
   activeRun,
   consoleState,
   events,
+  hosted,
   onHackAttempt,
   onPortalAction,
   onScenarioBug,
@@ -44,6 +46,7 @@ function SidePanel({
       <AuthorityTracePanel activeRun={activeRun} />
       <HackConsole consoleState={consoleState} onHackAttempt={onHackAttempt} />
       <AuthorityHeadPanel consoleState={consoleState} onPortalAction={onPortalAction} />
+      <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
     </aside>
   );
 }
@@ -143,6 +146,98 @@ function AuthorityHeadPanel({ consoleState, onPortalAction }) {
       </div>
       <p>
         The portal governs legitimacy and audit. It does not receive roots, seeds, or the robot action key.
+      </p>
+    </div>
+  );
+}
+
+function HostedRecordsPanel({ activeRun, hosted }) {
+  const status = hosted?.status ?? { label: "missing", message: "Hosted factory publishing is not configured." };
+  const config = hosted?.config ?? {};
+  const roles = hosted?.roles ?? [];
+  const canPublish = Boolean(activeRun && status.ready && !hosted?.publishing);
+
+  return (
+    <div className={`status-panel hosted-panel ${status.label}`}>
+      <div className="panel-heading">
+        <Link2 size={18} aria-hidden="true" />
+        <h2>Hosted Records</h2>
+        <span className="hosted-pill">{status.label}</span>
+      </div>
+      <div className="hosted-form">
+        <label>
+          <span>API key</span>
+          <input
+            value={config.apiKey ?? ""}
+            onChange={(event) => hosted?.onChange({ apiKey: event.target.value })}
+            placeholder="VITE_AE_API_KEY"
+            type="password"
+          />
+        </label>
+        <label>
+          <span>Owner user id</span>
+          <input
+            value={config.ownerUserId ?? ""}
+            onChange={(event) => hosted?.onChange({ ownerUserId: event.target.value })}
+            placeholder="AE_OWNER_USER_ID"
+          />
+        </label>
+      </div>
+      <div className="hosted-role-list">
+        {roles.map((role) => (
+          <details key={role.id} className="hosted-role" open={role.id === "robot"}>
+            <summary>
+              <span>
+                <strong>{role.label}</strong>
+                <small>{role.delegateId}</small>
+              </span>
+              <em>{role.botKeyReady && role.mintMaterialReady ? "ready" : "missing"}</em>
+            </summary>
+            <p>{role.scope}</p>
+            <p>{role.legitimacy}</p>
+            <div className="hosted-form">
+              <label>
+                <span>{role.label} bot key</span>
+                <input
+                  value={config[`${role.id}BotKey`] ?? ""}
+                  onChange={(event) => hosted?.onChange({ [`${role.id}BotKey`]: event.target.value })}
+                  placeholder={`VITE_AE_${role.id.toUpperCase()}_BOT_KEY`}
+                  type="password"
+                />
+              </label>
+              <label>
+                <span>{role.label} mint material</span>
+                <input
+                  value={config[`${role.id}MintMaterial`] ?? ""}
+                  onChange={(event) => hosted?.onChange({ [`${role.id}MintMaterial`]: event.target.value })}
+                  placeholder={`VITE_AE_${role.id.toUpperCase()}_MINT_MATERIAL`}
+                  type="password"
+                />
+              </label>
+            </div>
+          </details>
+        ))}
+      </div>
+      <p className="hosted-message">{status.message}</p>
+      <div className="button-grid hosted-actions">
+        <button type="button" onClick={hosted?.onSave} title="Save hosted settings in this browser session">
+          Save session
+        </button>
+        <button type="button" onClick={hosted?.onPublish} disabled={!canPublish} title="Mint, register, and verify the full factory authority trail">
+          {hosted?.publishing ? "Publishing" : "Publish trail"}
+        </button>
+        <button type="button" onClick={hosted?.onClear} title="Clear hosted settings from this browser session">
+          Clear
+        </button>
+      </div>
+      {(status.recordUrl || status.ledgerUrl) && (
+        <div className="hosted-links">
+          {status.recordUrl && <a href={status.recordUrl} target="_blank" rel="noreferrer">Open record</a>}
+          {status.ledgerUrl && <a href={status.ledgerUrl} target="_blank" rel="noreferrer">Ledger activity</a>}
+        </div>
+      )}
+      <p>
+        Delegates are loaded from mint-delegate*.json. Hosted mint, register, and verify use API-key routes only.
       </p>
     </div>
   );
