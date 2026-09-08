@@ -37,6 +37,8 @@ function useFactorySimulation() {
   const floorRef = useRef(null);
   const timersRef = useRef([]);
   const latestTrolleysRef = useRef(initialTrolleys);
+  const hostedInFlightRef = useRef(new Set());
+  const hostedPublishedRef = useRef(new Set());
   const [trolleys, setTrolleysState] = useState(initialTrolleys);
   const [robot, setRobot] = useState(initialRobot);
   const [phase, setPhase] = useState("ready");
@@ -120,6 +122,10 @@ function useFactorySimulation() {
     setPhase("ready");
     setDrag(null);
     setActiveRun(null);
+    hostedInFlightRef.current.clear();
+    hostedPublishedRef.current.clear();
+    setHostedPublishing(false);
+    setHostedStatus({ ...hostedConfigStatus(hostedConfig), recordUrl: "", ledgerUrl: "" });
     setStatus({
       signature: "waiting",
       legitimacy: "waiting",
@@ -132,7 +138,7 @@ function useFactorySimulation() {
       hack: "$ hack-robot --target command\nwaiting for a signed command",
       portal: "AuthorityHead portal online\nno hosted action selected",
     });
-  }, [clearTimers, setTrolleys]);
+  }, [clearTimers, hostedConfig, setTrolleys]);
 
   const updateHostedConfig = useCallback((patch) => {
     setHostedConfig((current) => {
@@ -156,39 +162,52 @@ function useFactorySimulation() {
     addEvent("info", "Hosted factory session settings cleared.");
   }, [addEvent]);
 
-  const publishHostedCurrent = useCallback(async () => {
+  const publishHostedCommand = useCallback(async (command, { manual = false } = {}) => {
     const readiness = hostedConfigStatus(hostedConfig);
     if (!readiness.ready) {
-      setHostedStatus({ ...readiness, recordUrl: "", ledgerUrl: "" });
-      addEvent("warn", readiness.message);
+      if (manual) {
+        setHostedStatus({ ...readiness, recordUrl: "", ledgerUrl: "" });
+        addEvent("warn", readiness.message);
+      }
       return;
     }
-    if (!activeRun?.command) {
-      setHostedStatus({
-        ready: false,
-        label: "waiting",
-        message: "Run or reroute a signed factory command before publishing hosted evidence.",
-        recordUrl: "",
-        ledgerUrl: "",
-      });
-      addEvent("warn", "Hosted publish requested before a factory command existed.");
+    if (!command) {
+      if (manual) {
+        setHostedStatus({
+          ready: false,
+          label: "waiting",
+          message: "Run or reroute a signed factory command before publishing hosted evidence.",
+          recordUrl: "",
+          ledgerUrl: "",
+        });
+        addEvent("warn", "Hosted publish requested before a factory command existed.");
+      }
       return;
     }
 
+    const commandKey = command.commandId;
+    if (!manual && (hostedPublishedRef.current.has(commandKey) || hostedInFlightRef.current.has(commandKey))) {
+      return;
+    }
+
+    hostedInFlightRef.current.add(commandKey);
     setHostedPublishing(true);
     setHostedStatus({
       ready: true,
       label: "publishing",
-      message: "Minting, registering, and verifying the current factory command...",
+      message: manual
+        ? "Minting, registering, and verifying the current factory command..."
+        : "Auto-publishing the hosted authority trail for this command...",
       recordUrl: "",
       ledgerUrl: "",
     });
 
     try {
-      const result = await publishHostedFactoryCommand(hostedConfig, activeRun.command);
+      const result = await publishHostedFactoryCommand(hostedConfig, command);
       const primary = result.records.find((item) => item.roleId === "robot") ?? result.records[0];
       const allValid = result.records.every((item) => item.report.valid);
-      setActiveRun((current) => current?.command?.commandId === activeRun.command.commandId
+      hostedPublishedRef.current.add(commandKey);
+      setActiveRun((current) => current?.command?.commandId === commandKey
         ? {
           ...current,
           hostedRecordId: primary?.record.recordId,
@@ -229,9 +248,14 @@ function useFactorySimulation() {
       }));
       addEvent("bad", `Hosted publish failed: ${message}`);
     } finally {
-      setHostedPublishing(false);
+      hostedInFlightRef.current.delete(commandKey);
+      setHostedPublishing(hostedInFlightRef.current.size > 0);
     }
-  }, [activeRun, addEvent, hostedConfig]);
+  }, [addEvent, hostedConfig]);
+
+  const publishHostedCurrent = useCallback(async () => {
+    await publishHostedCommand(activeRun?.command, { manual: true });
+  }, [activeRun?.command, publishHostedCommand]);
 
   const recoverWithFreshCommand = useCallback(
     (source) => {
@@ -280,6 +304,7 @@ function useFactorySimulation() {
         previousStatus: status.reasonCode,
         trace: corrected.trace,
       });
+      void publishHostedCommand(corrected.command);
       setConsoleState((current) => ({
         ...current,
         hack: `${current.hack}\n\n$ authority repair --reissue-clean\nold command discarded\nfresh signed command: ${confirmedSlot}`,
@@ -320,7 +345,7 @@ function useFactorySimulation() {
         wait(LOAD_MS, () => moveTrolley("trolley4", "truck"));
       });
     },
-    [activeRun, addEvent, clearTimers, currentTrolleySlot, moveRobotTo, moveTrolley, status.reasonCode, wait],
+    [activeRun, addEvent, clearTimers, currentTrolleySlot, moveRobotTo, moveTrolley, publishHostedCommand, status.reasonCode, wait],
   );
 
   const runHackAttempt = useCallback(
@@ -521,6 +546,7 @@ function useFactorySimulation() {
       reportId: correctedReport.reportId,
       trace: corrected.trace,
     });
+    void publishHostedCommand(corrected.command);
     setStatus({
       signature: correctedSignature.valid ? "valid" : "failed",
       legitimacy: correctedDecision.decision,
@@ -555,7 +581,7 @@ function useFactorySimulation() {
       addEvent("ok", `RobotBot rerouted to ${disruptionSlot} and loaded trolley4 without a stop-the-line fault.`);
       wait(LOAD_MS, () => moveTrolley("trolley4", "truck"));
     });
-  }, [activeRun, addEvent, clearTimers, disruptionSlot, moveRobotTo, moveTrolley, phase, robot.carrying, wait]);
+  }, [activeRun, addEvent, clearTimers, disruptionSlot, moveRobotTo, moveTrolley, phase, publishHostedCommand, robot.carrying, wait]);
 
   const runScenarioBug = useCallback(
     (kind) => {
@@ -628,6 +654,7 @@ function useFactorySimulation() {
       legitimacyId: originalState.legitimacyId,
       trace: original.trace,
     });
+    void publishHostedCommand(original.command);
     setStatus({
       signature: signatureCheck.valid ? "valid" : "failed",
       legitimacy: "pending",
@@ -798,6 +825,7 @@ function useFactorySimulation() {
             previousStatus: updated.status,
             trace: corrected.trace,
           });
+          void publishHostedCommand(corrected.command);
           setStatus({
             signature: correctedSignature.valid ? "valid" : "failed",
             legitimacy: correctedDecision.decision,
@@ -827,7 +855,7 @@ function useFactorySimulation() {
     };
 
     wait(ROBOT_TRAVEL_MS, () => verifyArrivalAndComplete(original, originalState, signatureCheck, "bay7", 2));
-  }, [addEvent, canRun, clearTimers, currentTrolleySlot, moveRobotTo, moveTrolley, wait]);
+  }, [addEvent, canRun, clearTimers, currentTrolleySlot, moveRobotTo, moveTrolley, publishHostedCommand, wait]);
 
   const floorStyle = useMemo(
     () => ({

@@ -155,7 +155,14 @@ function HostedRecordsPanel({ activeRun, hosted }) {
   const status = hosted?.status ?? { label: "missing", message: "Hosted factory publishing is not configured." };
   const config = hosted?.config ?? {};
   const roles = hosted?.roles ?? [];
-  const canPublish = Boolean(activeRun && status.ready && !hosted?.publishing);
+  const canPublish = Boolean(activeRun && !hosted?.publishing && status.label !== "published" && (status.ready || status.label === "failed"));
+  const publishLabel = hosted?.publishing
+    ? "Publishing"
+    : status.label === "published"
+      ? "Published"
+      : status.label === "failed"
+        ? "Retry trail"
+        : "Auto publish";
 
   return (
     <div className={`status-panel hosted-panel ${status.label}`}>
@@ -224,7 +231,7 @@ function HostedRecordsPanel({ activeRun, hosted }) {
           Save session
         </button>
         <button type="button" onClick={hosted?.onPublish} disabled={!canPublish} title="Mint, register, and verify the full factory authority trail">
-          {hosted?.publishing ? "Publishing" : "Publish trail"}
+          {publishLabel}
         </button>
         <button type="button" onClick={hosted?.onClear} title="Clear hosted settings from this browser session">
           Clear
@@ -237,7 +244,7 @@ function HostedRecordsPanel({ activeRun, hosted }) {
         </div>
       )}
       <p>
-        Delegates are loaded from mint-delegate*.json. Hosted mint, register, and verify use API-key routes only.
+        Delegates are loaded from mint-delegate*.json. Ready hosted settings auto-publish each signed factory command through API-key routes only.
       </p>
     </div>
   );
