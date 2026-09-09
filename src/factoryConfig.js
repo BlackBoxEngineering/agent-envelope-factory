@@ -7,6 +7,7 @@ const robotSeed = hexToBytes(`0x${"43".repeat(32)}`);
 const warehouseFeedSeed = hexToBytes(`0x${"44".repeat(32)}`);
 const dockControllerSeed = hexToBytes(`0x${"45".repeat(32)}`);
 const governanceSeed = hexToBytes(`0x${"46".repeat(32)}`);
+const llmOperatorSeed = hexToBytes(`0x${"47".repeat(32)}`);
 
 const actors = {
   DispatchAuthority: {
@@ -33,6 +34,11 @@ const actors = {
     actorId: "GovernanceEvaluator",
     seed: governanceSeed,
     address: seedAddress(governanceSeed),
+  },
+  LlmOperator: {
+    actorId: "LlmOperator",
+    seed: llmOperatorSeed,
+    address: seedAddress(llmOperatorSeed),
   },
 };
 

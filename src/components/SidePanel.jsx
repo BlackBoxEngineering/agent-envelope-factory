@@ -2,23 +2,28 @@ import { useEffect, useState } from "react";
 import {
   Activity,
   Bot,
+  BrainCircuit,
   Bug,
   CheckCircle2,
   ClipboardCheck,
+  FlaskConical,
   Globe2,
   KeyRound,
   Link2,
   RadioTower,
   Route,
+  Send,
   ShieldCheck,
   Terminal,
 } from "lucide-react";
 
 function SidePanel({
   activeRun,
+  ai,
   consoleState,
   events,
   hosted,
+  isAiControlled,
   onHackAttempt,
   onPortalAction,
   onScenarioBug,
@@ -37,21 +42,53 @@ function SidePanel({
     );
   }
 
+  if (side === "ai-left") {
+    return (
+      <aside className="side-panel left-panel ai-left-panel">
+        <OperationStatePanel status={status} />
+        <AiOperatorStatePanel action={ai?.proposedAction} provider={ai?.provider} />
+        <AiSpecterTestsPanel ai={ai} />
+      </aside>
+    );
+  }
+
   if (side === "actors") {
     return (
       <div className="center-actors">
-        <ActorFlowPanel activeRun={activeRun} phase={phase} status={status} />
+        <ActorFlowPanel activeRun={activeRun} ai={ai} isAiControlled={isAiControlled} phase={phase} status={status} />
       </div>
     );
   }
 
   if (side === "ledger") {
-    return <FactoryLedger events={events} className="center-ledger" />;
+    return null;
+  }
+
+  if (side === "ai-ledger") {
+    return (
+      <div className="ai-under-floor center-ledger">
+        <AiPromptPanel ai={ai} placement="under-floor" />
+      </div>
+    );
+  }
+
+  if (side === "ai-right") {
+    return (
+      <aside className="side-panel right-panel ai-right-panel">
+        <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
+        <FactoryLedger events={events} />
+        <AiProposedActionPanel action={ai?.proposedAction} />
+        <AiIntentStream attempts={ai?.attempts ?? []} />
+        <CurrentRecordPanel activeRun={activeRun} trolley4Slot={trolley4Slot} />
+        <AuthorityTracePanel activeRun={activeRun} />
+      </aside>
+    );
   }
 
   return (
     <aside className="side-panel right-panel">
       <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
+      <FactoryLedger events={events} />
       <AuthorityHeadPanel consoleState={consoleState} onPortalAction={onPortalAction} />
       <CurrentRecordPanel activeRun={activeRun} trolley4Slot={trolley4Slot} />
       <AuthorityTracePanel activeRun={activeRun} />
@@ -235,13 +272,184 @@ function HackConsole({ consoleState, onHackAttempt }) {
   );
 }
 
+function AiOperatorStatePanel({ action, provider }) {
+  const operatorState = action?.status ?? "waiting";
+  return (
+    <details className="status-panel ai-operator-state" open>
+      <summary className="panel-heading ai-summary">
+        <BrainCircuit size={18} aria-hidden="true" />
+        <h2>AI Operator</h2>
+        <span className={`trace-state ${operatorState}`}>{operatorState}</span>
+      </summary>
+      <div className="ai-model-state">
+        <strong>{action?.proposedTool ?? provider?.label ?? "Amazon Bedrock"}</strong>
+        <span>{action?.boundaryResult ?? provider?.message ?? "Simulator hands only. AgentEnvelope keeps authority."}</span>
+      </div>
+    </details>
+  );
+}
+
+function AiPromptPanel({ ai, placement = "rail" }) {
+  const messages = ai?.messages ?? [];
+
+  return (
+    <div className={`status-panel ai-prompt-panel ${placement}`}>
+      <div className="panel-heading">
+        <BrainCircuit size={18} aria-hidden="true" />
+        <h2>AI Operator Chat</h2>
+      </div>
+      <div className="ai-chat-thread" aria-live="polite">
+        {messages.map((message) => (
+          <div key={message.id} className={`ai-chat-message ${message.role}`}>
+            <span>{chatMessageLabel(message.role)}</span>
+            <p>{message.text}</p>
+          </div>
+        ))}
+        {ai?.thinking ? (
+          <div className="ai-chat-message assistant thinking">
+            <span>Bedrock</span>
+            <p>Thinking...</p>
+          </div>
+        ) : null}
+      </div>
+      <form
+        className="ai-live-prompt"
+        onSubmit={(event) => {
+          event.preventDefault();
+          ai?.onPromptSubmit();
+        }}
+      >
+        <label>
+          <span>Message</span>
+          <textarea
+            value={ai?.livePrompt ?? ""}
+            onChange={(event) => ai?.onPromptChange(event.target.value)}
+            placeholder="Ask anything, or tell the factory what to do."
+            rows={4}
+          />
+        </label>
+        <div className="ai-form-actions">
+          <button type="submit" disabled={ai?.thinking}>
+            <Send size={15} aria-hidden="true" />
+            <span>{ai?.thinking ? "Thinking" : "Send"}</span>
+          </button>
+          <button type="button" onClick={ai?.onReset}>
+            Reset
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function chatMessageLabel(role) {
+  if (role === "assistant") return "Bedrock";
+  if (role === "tool") return "Operator record";
+  if (role === "warning") return "Warning";
+  if (role === "error") return "Bridge";
+  return "Prompt";
+}
+
+function AiSpecterTestsPanel({ ai }) {
+  const attacks = (ai?.presets ?? []).filter((preset) => preset.group === "Red Spectre pressure tests");
+
+  return (
+    <details className="status-panel terminal-panel attack-panel ai-specter-panel" open>
+      <summary className="panel-heading attack-summary">
+        <Terminal size={18} aria-hidden="true" />
+        <h2>Red Spectre Tests</h2>
+      </summary>
+      <div className="attack-console-body">
+        <pre>$ red-spectre --pressure llm-operator</pre>
+        <p>These prompts try to corrupt the LLM into acting outside its envelope. AgentEnvelope gates the resulting tool call.</p>
+        <div className="attack-list">
+          <section className="attack-group">
+            <h3>LLM pressure</h3>
+            {attacks.map((attack) => (
+              <button
+                key={attack.id}
+                type="button"
+                onClick={() => ai?.onPreset(attack.id)}
+                disabled={ai?.thinking}
+                title={attack.prompt}
+              >
+                <strong>{attack.title}</strong>
+                <span>{attack.prompt}</span>
+                <small>Routes through Bedrock, then AgentEnvelope policy decides.</small>
+              </button>
+            ))}
+          </section>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function AiProposedActionPanel({ action }) {
+  return (
+    <details className={`status-panel ai-action-panel collapsible-panel ${action?.status ?? "waiting"}`} open>
+      <summary className="panel-heading">
+        <FlaskConical size={18} aria-hidden="true" />
+        <h2>LLM Proposed Action</h2>
+        <span className={`trace-state ${action?.status ?? "waiting"}`}>{action?.status ?? "waiting"}</span>
+      </summary>
+      {action ? (
+        <dl>
+          <RecordRow label="Attempt">{action.id}</RecordRow>
+          <RecordRow label="Prompt">{action.prompt}</RecordRow>
+          <RecordRow label="Tool">{action.proposedTool}</RecordRow>
+          <RecordRow label="Routed">{action.routedActor}</RecordRow>
+          <RecordRow label="Operation">{action.operation}</RecordRow>
+          <RecordRow label="Resources">{action.resources.join(", ")}</RecordRow>
+          <RecordRow label="Boundary">{action.boundaryResult}</RecordRow>
+          <RecordRow label="Hosted">{action.hostedReceipt}</RecordRow>
+        </dl>
+      ) : (
+        <div className="ai-empty-state">
+          <strong>waiting</strong>
+          <span>The AI operator has not proposed an action yet.</span>
+        </div>
+      )}
+    </details>
+  );
+}
+
+function AiIntentStream({ attempts }) {
+  return (
+    <details className="event-log ai-intent-stream collapsible-panel" open>
+      <summary className="panel-heading ai-summary">
+        <h2>LLM Intent Stream</h2>
+        <span className="trace-state">{attempts.length}</span>
+      </summary>
+      <ol>
+        {attempts.length > 0 ? (
+          attempts.map((attempt) => (
+            <li key={attempt.id} className={attempt.status === "allowed" ? "ok" : "bad"}>
+              <strong>{attempt.proposedTool}</strong>
+              <span>{attempt.boundaryResult}</span>
+              <small>{attempt.resources.join(", ")}</small>
+            </li>
+          ))
+        ) : (
+          <li className="info">
+            <strong>waiting</strong>
+            <span>No LLM output yet.</span>
+            <small>Factory changes require tool calls; questions can be answered read-only.</small>
+          </li>
+        )}
+      </ol>
+    </details>
+  );
+}
+
 function AuthorityHeadPanel({ consoleState, onPortalAction }) {
   return (
-    <div className="status-panel action-panel authority-head">
-      <div className="panel-heading">
+    <details className="status-panel action-panel authority-head collapsible-panel" open>
+      <summary className="panel-heading">
         <Globe2 size={18} aria-hidden="true" />
         <h2>Web Portal Authority Head</h2>
-      </div>
+        <span className="trace-state active">active</span>
+      </summary>
       <pre>{consoleState?.portal ?? "AuthorityHead portal online"}</pre>
       <div className="button-grid">
         <button type="button" onClick={() => onPortalAction("verify")} title="Run a hosted verification report">
@@ -260,7 +468,7 @@ function AuthorityHeadPanel({ consoleState, onPortalAction }) {
       <p>
         The portal governs legitimacy and audit. It does not receive roots, seeds, or the robot action key.
       </p>
-    </div>
+    </details>
   );
 }
 
@@ -283,7 +491,7 @@ function HostedRecordsPanel({ activeRun, hosted }) {
 
   return (
     <details
-      className={`status-panel hosted-panel ${status.label}`}
+      className={`status-panel hosted-panel collapsible-panel ${status.label}`}
       open={isOpen}
       onToggle={(event) => setIsOpen(event.currentTarget.open)}
     >
@@ -291,12 +499,12 @@ function HostedRecordsPanel({ activeRun, hosted }) {
         <Link2 size={18} aria-hidden="true" />
         <h2>Hosted Records</h2>
         <span className="hosted-summary-state">{portalLabel}</span>
-        <span className="hosted-pill">{status.label}</span>
+        <span className={`hosted-pill ${status.label}`}>{status.label}</span>
       </summary>
       <div className="hosted-panel-body">
         <div className="hosted-portal-state">
           <strong>{portalLabel}</strong>
-          <span>{activeRun ? "Signed commands publish as they are issued." : "Press Run to issue the next signed command."}</span>
+          <span>{activeRun ? "Signed commands publish as they are issued." : "Issue a signed command to publish the next authority trail."}</span>
         </div>
         <div className="hosted-form">
           <label>
@@ -375,12 +583,13 @@ function HostedRecordsPanel({ activeRun, hosted }) {
   );
 }
 
-function ActorFlowPanel({ activeRun, phase, status }) {
+function ActorFlowPanel({ activeRun, ai, isAiControlled, phase, status }) {
   const commandTarget = activeRun?.command?.args?.bayId ?? "bay7";
   const reasonCode = status.reasonCode ?? "";
   const cryptoBlocked =
     reasonCode.startsWith("crypto.") ||
     reasonCode.startsWith("envelope.") ||
+    reasonCode.startsWith("ai.") ||
     reasonCode.startsWith("supply_chain.") ||
     reasonCode.startsWith("orchestrator.") ||
     reasonCode.startsWith("intent.");
@@ -389,9 +598,61 @@ function ActorFlowPanel({ activeRun, phase, status }) {
   const disruptionReview = reasonCode.startsWith("disruption.") || reasonCode === "portal.evidence_refresh";
   const portalBlocked = reasonCode.startsWith("portal.legitimacy") || reasonCode.startsWith("governance.");
   const observedTarget = status.reasonCode === "state.mismatched" ? "new bay" : commandTarget;
+  const supportActor = isAiControlled
+    ? {
+        name: "LLM Operator",
+        role: "Keeps flow moving",
+        icon: BrainCircuit,
+        state: ai?.thinking
+          ? "working"
+          : ai?.proposedAction?.status === "blocked"
+            ? "blocked"
+            : phase === "replanning"
+              ? "reissued"
+              : status.reasonCode === "state.mismatched"
+                ? "planning"
+                : "standby",
+        active: Boolean(ai?.thinking || ai?.proposedAction || phase === "replanning" || status.reasonCode === "state.mismatched"),
+        operation: ai?.thinking
+          ? "reading prompt and visible state"
+          : ai?.proposedAction?.status === "blocked"
+            ? `tool gated: ${ai.proposedAction.reasonCode}`
+            : phase === "replanning"
+              ? `handling recovery for ${commandTarget}`
+              : status.reasonCode === "state.mismatched"
+                ? "diagnosing broken flow"
+                : "waiting for query, command, or corruption prompt",
+      }
+    : {
+        name: "Planner Bot",
+        role: "Requests correction",
+        icon: Route,
+        state:
+          phase === "replanning"
+            ? "reissued"
+            : reasonCode.startsWith("ai.") || reasonCode.startsWith("intent.") || reasonCode.startsWith("supply_chain.")
+              ? "blocked"
+              : status.reasonCode === "state.mismatched"
+                ? "planning"
+                : "idle",
+        active:
+          phase === "replanning" ||
+          status.reasonCode === "state.mismatched" ||
+          reasonCode.startsWith("ai.") ||
+          reasonCode.startsWith("intent.") ||
+          reasonCode.startsWith("supply_chain."),
+        operation:
+          phase === "replanning"
+            ? `fresh command targets ${commandTarget}`
+            : reasonCode.startsWith("ai.") || reasonCode.startsWith("intent.") || reasonCode.startsWith("supply_chain.")
+              ? `LLM proposal gated: ${reasonCode}`
+              : status.reasonCode === "state.mismatched"
+                ? "selecting admissible replacement"
+                : "idle until reality changes",
+      };
   const actors = [
     {
-      name: "DispatchAuthority",
+      name: "Dispatch Authority",
       role: "Signs command",
       icon: ShieldCheck,
       state: activeRun ? "signed" : "ready",
@@ -399,7 +660,7 @@ function ActorFlowPanel({ activeRun, phase, status }) {
       operation: activeRun ? `issued ${activeRun.command.commandId}` : "waiting to issue bay7 command",
     },
     {
-      name: "RobotBot",
+      name: "Robot Bot",
       role: "Executes scoped action",
       icon: Bot,
       state: phase === "denied" ? "blocked" : phase === "moving" || phase === "replanning" ? "working" : phase === "complete" ? "done" : "standby",
@@ -437,7 +698,7 @@ function ActorFlowPanel({ activeRun, phase, status }) {
             : "waiting for location evidence",
     },
     {
-      name: "GovernanceEvaluator",
+      name: "Governance Evaluator",
       role: "Checks legitimacy",
       icon: ClipboardCheck,
       state: status.legitimacy,
@@ -457,19 +718,7 @@ function ActorFlowPanel({ activeRun, phase, status }) {
             ? "legitimacy allowed"
             : "evaluating policy and evidence",
     },
-    {
-      name: "PlannerBot",
-      role: "Requests correction",
-      icon: Route,
-      state: phase === "replanning" ? "reissued" : status.reasonCode === "state.mismatched" ? "planning" : "idle",
-      active: phase === "replanning" || status.reasonCode === "state.mismatched",
-      operation:
-        phase === "replanning"
-          ? `fresh command targets ${commandTarget}`
-          : status.reasonCode === "state.mismatched"
-            ? "selecting admissible replacement"
-            : "idle until reality changes",
-    },
+    supportActor,
   ];
 
   return (
@@ -494,7 +743,7 @@ function ActorBox({ actor }) {
       <div className="actor-title">
         <Icon size={16} aria-hidden="true" />
         <strong>{actor.name}</strong>
-        <span>{actor.state}</span>
+        <span className={actor.state}>{actor.state}</span>
       </div>
       <p>{actor.role}</p>
       <small>{actor.operation}</small>
@@ -504,11 +753,12 @@ function ActorBox({ actor }) {
 
 function CurrentRecordPanel({ activeRun, trolley4Slot }) {
   return (
-    <div className="status-panel compact">
-      <div className="panel-heading">
+    <details className="status-panel compact collapsible-panel" open>
+      <summary className="panel-heading">
         <CheckCircle2 size={18} aria-hidden="true" />
         <h2>Current Record</h2>
-      </div>
+        <span className={`trace-state ${activeRun ? "ready" : "waiting"}`}>{activeRun ? "ready" : "waiting"}</span>
+      </summary>
       <dl>
         <RecordRow label="Command">
           {activeRun
@@ -525,7 +775,7 @@ function CurrentRecordPanel({ activeRun, trolley4Slot }) {
         <RecordRow label="Status">{activeRun?.updatedStatus ?? activeRun?.previousStatus ?? "active"}</RecordRow>
         <RecordRow label="Trolley4">{trolley4Slot ?? "unknown"}</RecordRow>
       </dl>
-    </div>
+    </details>
   );
 }
 
@@ -539,14 +789,14 @@ function AuthorityTracePanel({ activeRun }) {
 
   return (
     <details
-      className="status-panel trace-panel"
+      className="status-panel trace-panel collapsible-panel"
       open={isOpen}
       onToggle={(event) => setIsOpen(event.currentTarget.open)}
     >
       <summary className="panel-heading trace-summary">
         <KeyRound size={18} aria-hidden="true" />
         <h2>Authority Trace</h2>
-        <span className="trace-state">{traceReady ? "derived" : "waiting"}</span>
+        <span className={`trace-state ${traceReady ? "derived" : "waiting"}`}>{traceReady ? "derived" : "waiting"}</span>
       </summary>
       <div className="trace-body">
         <dl>
@@ -562,8 +812,11 @@ function AuthorityTracePanel({ activeRun }) {
 
 function FactoryLedger({ className = "", events }) {
   return (
-    <div className={`event-log ${className}`}>
-      <h2>Factory Ledger</h2>
+    <details className={`event-log collapsible-panel ${className}`} open>
+      <summary className="panel-heading">
+        <h2>Factory Ledger</h2>
+        <span className="trace-state active">{events.length}</span>
+      </summary>
       <ol>
         {events.map((event, index) => (
           <li key={`${event.text}-${index}`} className={event.kind}>
@@ -571,7 +824,7 @@ function FactoryLedger({ className = "", events }) {
           </li>
         ))}
       </ol>
-    </div>
+    </details>
   );
 }
 

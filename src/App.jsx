@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import FactoryFloor from "./components/FactoryFloor.jsx";
 import RedSpecterAttacks from "./components/RedSpecterAttacks.jsx";
 import SidePanel from "./components/SidePanel.jsx";
@@ -6,27 +6,50 @@ import SetupGuide from "./components/SetupGuide.jsx";
 import Toolbar from "./components/Toolbar.jsx";
 import useFactorySimulation from "./hooks/useFactorySimulation.js";
 
+const viewIds = new Set(["run", "ai-run", "setup", "specter"]);
+const VIEW_STORAGE_KEY = "agent-envelope-factory:view";
+
+function initialView() {
+  if (typeof window === "undefined") return "run";
+  const requested = new URLSearchParams(window.location.search).get("view");
+  if (viewIds.has(requested)) return requested;
+  const saved = window.localStorage.getItem(VIEW_STORAGE_KEY);
+  return viewIds.has(saved) ? saved : "run";
+}
+
 function App() {
-  const [view, setView] = useState("run");
-  const { floorProps, sidePanelProps, toolbarProps } = useFactorySimulation();
+  const [view, setView] = useState(initialView);
+  const standardSimulation = useFactorySimulation();
+  const aiSimulation = useFactorySimulation({ controller: "ai" });
+  const isAiRun = view === "ai-run";
+  const simulation = isAiRun ? aiSimulation : standardSimulation;
+  const changeView = useCallback((nextView) => {
+    if (!viewIds.has(nextView)) return;
+    setView(nextView);
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(VIEW_STORAGE_KEY, nextView);
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", nextView);
+    window.history.replaceState({}, "", url);
+  }, []);
 
   return (
     <main className="app">
-      <Toolbar {...toolbarProps} view={view} onViewChange={setView} />
+      <Toolbar {...simulation.toolbarProps} view={view} onViewChange={changeView} />
 
       {view === "setup" ? (
-        <SetupGuide onBack={() => setView("run")} />
+        <SetupGuide onBack={() => changeView("run")} />
       ) : view === "specter" ? (
-        <RedSpecterAttacks onBack={() => setView("run")} />
+        <RedSpecterAttacks onBack={() => changeView("run")} />
       ) : (
-        <section className="workspace">
-          <SidePanel side="left" {...sidePanelProps} />
+        <section className={`workspace ${isAiRun ? "ai-workspace" : ""}`}>
+          <SidePanel side={isAiRun ? "ai-left" : "left"} {...simulation.sidePanelProps} />
           <div className="center-panel">
-            <SidePanel side="actors" {...sidePanelProps} />
-            <FactoryFloor {...floorProps} />
-            <SidePanel side="ledger" {...sidePanelProps} />
+            <SidePanel side="actors" {...simulation.sidePanelProps} />
+            <FactoryFloor {...simulation.floorProps} />
+            <SidePanel side={isAiRun ? "ai-ledger" : "ledger"} {...simulation.sidePanelProps} />
           </div>
-          <SidePanel side="right" {...sidePanelProps} />
+          <SidePanel side={isAiRun ? "ai-right" : "right"} {...simulation.sidePanelProps} />
         </section>
       )}
 
