@@ -65,6 +65,7 @@ function useFactorySimulation() {
     ledgerUrl: "",
   }));
   const [hostedPublishing, setHostedPublishing] = useState(false);
+  const [speed, setSpeed] = useState(1);
   const hostedRoles = useMemo(() => hostedRoleSummaries(hostedConfig), [hostedConfig]);
 
   const setTrolleys = useCallback((updater) => {
@@ -92,9 +93,9 @@ function useFactorySimulation() {
   }, []);
 
   const wait = useCallback((ms, fn) => {
-    const timer = setTimeout(fn, ms);
+    const timer = setTimeout(fn, Math.round(ms / speed));
     timersRef.current.push(timer);
-  }, []);
+  }, [speed]);
 
   const moveRobotTo = useCallback((slotId, carrying = null) => {
     const slot = slots[slotId];
@@ -162,32 +163,18 @@ function useFactorySimulation() {
     addEvent("info", "Hosted factory session settings cleared.");
   }, [addEvent]);
 
-  const publishHostedCommand = useCallback(async (command, { manual = false } = {}) => {
+  const publishHostedCommand = useCallback(async (command) => {
     const readiness = hostedConfigStatus(hostedConfig);
     if (!readiness.ready) {
-      if (manual) {
-        setHostedStatus({ ...readiness, recordUrl: "", ledgerUrl: "" });
-        addEvent("warn", readiness.message);
-      }
       return;
     }
     if (!command) {
-      if (manual) {
-        setHostedStatus({
-          ready: false,
-          label: "waiting",
-          message: "Run or reroute a signed factory command before publishing hosted evidence.",
-          recordUrl: "",
-          ledgerUrl: "",
-        });
-        addEvent("warn", "Hosted publish requested before a factory command existed.");
-      }
       return;
     }
 
     const commandKey = command.commandId;
     const existingRecords = hostedResultsRef.current.get(commandKey) ?? [];
-    if (!manual && (existingRecords.length >= hostedRoles.length || hostedInFlightRef.current.has(commandKey))) {
+    if (existingRecords.length >= hostedRoles.length || hostedInFlightRef.current.has(commandKey)) {
       return;
     }
 
@@ -196,9 +183,7 @@ function useFactorySimulation() {
     setHostedStatus({
       ready: true,
       label: "publishing",
-      message: manual
-        ? "Minting, registering, and verifying the current factory command..."
-        : "Auto-publishing the hosted authority trail for this command...",
+      message: "Portal active. Publishing the hosted authority trail for this command...",
       recordUrl: "",
       ledgerUrl: "",
     });
@@ -274,10 +259,6 @@ function useFactorySimulation() {
       setHostedPublishing(hostedInFlightRef.current.size > 0);
     }
   }, [addEvent, hostedConfig, hostedRoles.length]);
-
-  const publishHostedCurrent = useCallback(async () => {
-    await publishHostedCommand(activeRun?.command, { manual: true });
-  }, [activeRun?.command, publishHostedCommand]);
 
   const recoverWithFreshCommand = useCallback(
     (source) => {
@@ -883,8 +864,9 @@ function useFactorySimulation() {
     () => ({
       "--robot-x": `${robot.x}%`,
       "--robot-y": `${robot.y}%`,
+      "--robot-travel-duration": `${Math.max(160, Math.round(2350 / speed))}ms`,
     }),
-    [robot],
+    [robot, speed],
   );
 
   const pointerToPercent = useCallback((event) => {
@@ -965,7 +947,6 @@ function useFactorySimulation() {
         config: hostedConfig,
         onChange: updateHostedConfig,
         onClear: clearHostedSession,
-        onPublish: publishHostedCurrent,
         onSave: saveHostedSession,
         publishing: hostedPublishing,
         roles: hostedRoles,
@@ -984,6 +965,8 @@ function useFactorySimulation() {
       onDisrupt: disruptFlow,
       onReset: reset,
       onRun: runSimulation,
+      onSpeedChange: setSpeed,
+      speed,
     },
   };
 }

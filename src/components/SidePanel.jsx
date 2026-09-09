@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Activity,
   Bot,
@@ -29,12 +30,18 @@ function SidePanel({
   if (side === "left") {
     return (
       <aside className="side-panel left-panel">
-        <ActorFlowPanel activeRun={activeRun} phase={phase} status={status} />
         <OperationStatePanel status={status} />
         <DisruptionPanel onScenarioBug={onScenarioBug} />
         <HackConsole consoleState={consoleState} onHackAttempt={onHackAttempt} />
-        <AuthorityHeadPanel consoleState={consoleState} onPortalAction={onPortalAction} />
       </aside>
+    );
+  }
+
+  if (side === "actors") {
+    return (
+      <div className="center-actors">
+        <ActorFlowPanel activeRun={activeRun} phase={phase} status={status} />
+      </div>
     );
   }
 
@@ -45,6 +52,7 @@ function SidePanel({
   return (
     <aside className="side-panel right-panel">
       <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
+      <AuthorityHeadPanel consoleState={consoleState} onPortalAction={onPortalAction} />
       <CurrentRecordPanel activeRun={activeRun} trolley4Slot={trolley4Slot} />
       <AuthorityTracePanel activeRun={activeRun} />
     </aside>
@@ -155,98 +163,110 @@ function HostedRecordsPanel({ activeRun, hosted }) {
   const status = hosted?.status ?? { label: "missing", message: "Hosted factory publishing is not configured." };
   const config = hosted?.config ?? {};
   const roles = hosted?.roles ?? [];
-  const canPublish = Boolean(activeRun && !hosted?.publishing && status.label !== "published" && (status.ready || status.label === "failed"));
-  const publishLabel = hosted?.publishing
-    ? "Publishing"
-    : status.label === "published"
-      ? "Published"
-      : status.label === "failed"
-        ? "Retry trail"
-        : "Auto publish";
+  const [isOpen, setIsOpen] = useState(() => !status.ready);
+  const portalLabel = hosted?.publishing
+    ? "Portal publishing"
+    : status.ready
+      ? "Portal active"
+      : "Portal not ready";
+
+  useEffect(() => {
+    if (!status.ready) {
+      setIsOpen(true);
+    }
+  }, [status.ready]);
 
   return (
-    <div className={`status-panel hosted-panel ${status.label}`}>
-      <div className="panel-heading">
+    <details
+      className={`status-panel hosted-panel ${status.label}`}
+      open={isOpen}
+      onToggle={(event) => setIsOpen(event.currentTarget.open)}
+    >
+      <summary className="panel-heading hosted-summary">
         <Link2 size={18} aria-hidden="true" />
         <h2>Hosted Records</h2>
+        <span className="hosted-summary-state">{portalLabel}</span>
         <span className="hosted-pill">{status.label}</span>
-      </div>
-      <div className="hosted-form">
-        <label>
-          <span>API key</span>
-          <input
-            value={config.apiKey ?? ""}
-            onChange={(event) => hosted?.onChange({ apiKey: event.target.value })}
-            placeholder="VITE_AE_API_KEY"
-            type="password"
-          />
-        </label>
-        <label>
-          <span>Owner user id</span>
-          <input
-            value={config.ownerUserId ?? ""}
-            onChange={(event) => hosted?.onChange({ ownerUserId: event.target.value })}
-            placeholder="AE_OWNER_USER_ID"
-          />
-        </label>
-      </div>
-      <div className="hosted-role-list">
-        {roles.map((role) => (
-          <details key={role.id} className="hosted-role" open={role.id === "robot"}>
-            <summary>
-              <span>
-                <strong>{role.label}</strong>
-                <small>{role.delegateId}</small>
-              </span>
-              <em>{role.botKeyReady && role.mintMaterialReady ? "ready" : "missing"}</em>
-            </summary>
-            <p>{role.scope}</p>
-            <p>{role.legitimacy}</p>
-            <div className="hosted-form">
-              <label>
-                <span>{role.label} bot key</span>
-                <input
-                  value={config[`${role.id}BotKey`] ?? ""}
-                  onChange={(event) => hosted?.onChange({ [`${role.id}BotKey`]: event.target.value })}
-                  placeholder={`VITE_AE_${role.id.toUpperCase()}_BOT_KEY`}
-                  type="password"
-                />
-              </label>
-              <label>
-                <span>{role.label} mint material</span>
-                <input
-                  value={config[`${role.id}MintMaterial`] ?? ""}
-                  onChange={(event) => hosted?.onChange({ [`${role.id}MintMaterial`]: event.target.value })}
-                  placeholder={`VITE_AE_${role.id.toUpperCase()}_MINT_MATERIAL`}
-                  type="password"
-                />
-              </label>
-            </div>
-          </details>
-        ))}
-      </div>
-      <p className="hosted-message">{status.message}</p>
-      <div className="button-grid hosted-actions">
-        <button type="button" onClick={hosted?.onSave} title="Save hosted settings in this browser session">
-          Save session
-        </button>
-        <button type="button" onClick={hosted?.onPublish} disabled={!canPublish} title="Mint, register, and verify the full factory authority trail">
-          {publishLabel}
-        </button>
-        <button type="button" onClick={hosted?.onClear} title="Clear hosted settings from this browser session">
-          Clear
-        </button>
-      </div>
-      {(status.recordUrl || status.ledgerUrl) && (
-        <div className="hosted-links">
-          {status.recordUrl && <a href={status.recordUrl} target="_blank" rel="noreferrer">Open record</a>}
-          {status.ledgerUrl && <a href={status.ledgerUrl} target="_blank" rel="noreferrer">Ledger activity</a>}
+      </summary>
+      <div className="hosted-panel-body">
+        <div className="hosted-portal-state">
+          <strong>{portalLabel}</strong>
+          <span>{activeRun ? "Signed commands publish as they are issued." : "Press Run to issue the next signed command."}</span>
         </div>
-      )}
-      <p>
-        Delegates are loaded from mint-delegate*.json. Ready hosted settings auto-publish each signed factory command through API-key routes only.
-      </p>
-    </div>
+        <div className="hosted-form">
+          <label>
+            <span>API key</span>
+            <input
+              value={config.apiKey ?? ""}
+              onChange={(event) => hosted?.onChange({ apiKey: event.target.value })}
+              placeholder="VITE_AE_API_KEY"
+              type="password"
+            />
+          </label>
+          <label>
+            <span>Owner user id</span>
+            <input
+              value={config.ownerUserId ?? ""}
+              onChange={(event) => hosted?.onChange({ ownerUserId: event.target.value })}
+              placeholder="AE_OWNER_USER_ID"
+            />
+          </label>
+        </div>
+        <div className="hosted-role-list">
+          {roles.map((role) => (
+            <details key={role.id} className="hosted-role" open={role.id === "robot"}>
+              <summary>
+                <span>
+                  <strong>{role.label}</strong>
+                  <small>{role.delegateId}</small>
+                </span>
+                <em>{role.botKeyReady && role.mintMaterialReady ? "ready" : "missing"}</em>
+              </summary>
+              <p>{role.scope}</p>
+              <p>{role.legitimacy}</p>
+              <div className="hosted-form">
+                <label>
+                  <span>{role.label} bot key</span>
+                  <input
+                    value={config[`${role.id}BotKey`] ?? ""}
+                    onChange={(event) => hosted?.onChange({ [`${role.id}BotKey`]: event.target.value })}
+                    placeholder={`VITE_AE_${role.id.toUpperCase()}_BOT_KEY`}
+                    type="password"
+                  />
+                </label>
+                <label>
+                  <span>{role.label} mint material</span>
+                  <input
+                    value={config[`${role.id}MintMaterial`] ?? ""}
+                    onChange={(event) => hosted?.onChange({ [`${role.id}MintMaterial`]: event.target.value })}
+                    placeholder={`VITE_AE_${role.id.toUpperCase()}_MINT_MATERIAL`}
+                    type="password"
+                  />
+                </label>
+              </div>
+            </details>
+          ))}
+        </div>
+        <p className="hosted-message">{status.message}</p>
+        <div className="button-grid hosted-actions">
+          <button type="button" onClick={hosted?.onSave} title="Save hosted settings in this browser session">
+            Save session
+          </button>
+          <button type="button" onClick={hosted?.onClear} title="Clear hosted settings from this browser session">
+            Clear
+          </button>
+        </div>
+        {(status.recordUrl || status.ledgerUrl) && (
+          <div className="hosted-links">
+            {status.recordUrl && <a href={status.recordUrl} target="_blank" rel="noreferrer">Open record</a>}
+            {status.ledgerUrl && <a href={status.ledgerUrl} target="_blank" rel="noreferrer">Ledger activity</a>}
+          </div>
+        )}
+        <p>
+          Delegates are loaded from mint-delegate*.json. Ready hosted settings auto-publish each signed factory command through API-key routes only.
+        </p>
+      </div>
+    </details>
   );
 }
 
@@ -400,19 +420,33 @@ function CurrentRecordPanel({ activeRun, trolley4Slot }) {
 }
 
 function AuthorityTracePanel({ activeRun }) {
+  const [isOpen, setIsOpen] = useState(() => !activeRun);
+  const traceReady = Boolean(activeRun?.trace?.actionEnvelopeHash);
+
+  useEffect(() => {
+    setIsOpen(!traceReady);
+  }, [traceReady]);
+
   return (
-    <div className="status-panel trace-panel">
-      <div className="panel-heading">
+    <details
+      className="status-panel trace-panel"
+      open={isOpen}
+      onToggle={(event) => setIsOpen(event.currentTarget.open)}
+    >
+      <summary className="panel-heading trace-summary">
         <KeyRound size={18} aria-hidden="true" />
         <h2>Authority Trace</h2>
+        <span className="trace-state">{traceReady ? "derived" : "waiting"}</span>
+      </summary>
+      <div className="trace-body">
+        <dl>
+          <RecordRow label="Path">{activeRun?.trace?.path ?? "waiting"}</RecordRow>
+          <RecordRow label="Action Seed">{activeRun?.trace?.actionSeedPreview ?? "not derived"}</RecordRow>
+          <RecordRow label="Custody">{activeRun?.trace?.custody ?? "sovereign boundary"}</RecordRow>
+        </dl>
+        <pre>{activeRun?.trace?.canonicalActionEnvelope ?? "{ }"}</pre>
       </div>
-      <dl>
-        <RecordRow label="Path">{activeRun?.trace?.path ?? "waiting"}</RecordRow>
-        <RecordRow label="Action Seed">{activeRun?.trace?.actionSeedPreview ?? "not derived"}</RecordRow>
-        <RecordRow label="Custody">{activeRun?.trace?.custody ?? "sovereign boundary"}</RecordRow>
-      </dl>
-      <pre>{activeRun?.trace?.canonicalActionEnvelope ?? "{ }"}</pre>
-    </div>
+    </details>
   );
 }
 

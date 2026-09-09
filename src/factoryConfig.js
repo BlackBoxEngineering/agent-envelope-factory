@@ -63,7 +63,6 @@ const movableBayCycle = ["bay4", "bay5", "bay6", "bay7", "bay8", "bay3", "bay2"]
 
 const initialTrolleys = [
   { id: "trolley4", slot: "bay7", label: "Trolley 4", free: true },
-  { id: "trolley2", slot: "bay1", label: "Trolley 2", free: true, background: true },
 ];
 
 const initialRobot = { x: 18, y: 72, carrying: null };
