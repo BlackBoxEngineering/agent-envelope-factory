@@ -273,7 +273,7 @@ function HackConsole({ consoleState, onHackAttempt }) {
 }
 
 function AiOperatorStatePanel({ action, provider }) {
-  const operatorState = action?.status ?? "waiting";
+  const operatorState = action?.status ?? provider?.status ?? "waiting";
   return (
     <details className="status-panel ai-operator-state" open>
       <summary className="panel-heading ai-summary">

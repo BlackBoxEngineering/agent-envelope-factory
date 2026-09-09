@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   actors,
   authorityPolicy,
@@ -109,9 +109,21 @@ const AI_PRESETS = [
 ];
 
 const AI_OPERATOR_BRIDGE_URL = import.meta.env.VITE_AI_OPERATOR_BRIDGE_URL ?? "http://127.0.0.1:8787/ai/operator";
+const AI_OPERATOR_HEALTH_URL = AI_OPERATOR_BRIDGE_URL.replace(/\/ai\/operator\/?$/, "/health");
+const AI_PROVIDER_CHECKING = {
+  label: "Amazon Bedrock",
+  status: "checking",
+  message: "Checking the local Bedrock bridge before the AI operator is used.",
+};
 const AI_PROVIDER_READY = {
   label: "Amazon Bedrock",
+  status: "ready",
   message: "Local Bedrock bridge ready. The browser sends visible state and receives tool calls or read-only answers.",
+};
+const AI_PROVIDER_OFFLINE = {
+  label: "Amazon Bedrock",
+  status: "offline",
+  message: "Local Bedrock bridge is offline. Start it with npm run ai:bridge.",
 };
 const AI_INITIAL_MESSAGES = [
   {
@@ -244,6 +256,20 @@ async function requestBedrockOperator({ prompt, presetId, state }) {
   return body;
 }
 
+async function requestBedrockHealth() {
+  const response = await fetch(AI_OPERATOR_HEALTH_URL);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.ok) {
+    throw new Error(body.error || `Bedrock bridge health returned ${response.status}`);
+  }
+  return body;
+}
+
+function isBridgeConnectionError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /failed to fetch|networkerror|load failed|connection|refused|unable to connect/i.test(message);
+}
+
 function useFactorySimulation({ controller = "manual" } = {}) {
   const isAiControlled = controller === "ai";
   const readyMessage = isAiControlled
@@ -282,7 +308,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
   const [aiMessages, setAiMessages] = useState(AI_INITIAL_MESSAGES);
   const [aiAttempts, setAiAttempts] = useState([]);
   const [aiProposedAction, setAiProposedAction] = useState(null);
-  const [aiProviderStatus, setAiProviderStatus] = useState(AI_PROVIDER_READY);
+  const [aiProviderStatus, setAiProviderStatus] = useState(AI_PROVIDER_CHECKING);
   const [aiThinking, setAiThinking] = useState(false);
   const [hostedConfig, setHostedConfig] = useState(() => initialHostedConfig());
   const [hostedStatus, setHostedStatus] = useState(() => ({
@@ -293,6 +319,35 @@ function useFactorySimulation({ controller = "manual" } = {}) {
   const [hostedPublishing, setHostedPublishing] = useState(false);
   const [speed, setSpeed] = useState(1);
   const hostedRoles = useMemo(() => hostedRoleSummaries(hostedConfig), [hostedConfig]);
+
+  const refreshAiProviderStatus = useCallback(() => {
+    if (!isAiControlled) {
+      setAiProviderStatus(AI_PROVIDER_READY);
+      return () => {};
+    }
+
+    let cancelled = false;
+    setAiProviderStatus(AI_PROVIDER_CHECKING);
+    requestBedrockHealth()
+      .then((health) => {
+        if (cancelled) return;
+        setAiProviderStatus({
+          label: "Amazon Bedrock",
+          status: "ready",
+          message: `Local Bedrock bridge ready: ${health.modelId ?? "Bedrock model"} (${health.region ?? "region unknown"}).`,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAiProviderStatus(AI_PROVIDER_OFFLINE);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAiControlled]);
+
+  useEffect(() => refreshAiProviderStatus(), [refreshAiProviderStatus]);
 
   const setTrolleys = useCallback((updater) => {
     setTrolleysState((current) => {
@@ -406,9 +461,9 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     setAiMessages(AI_INITIAL_MESSAGES);
     setAiAttempts([]);
     setAiProposedAction(null);
-    setAiProviderStatus(AI_PROVIDER_READY);
+    refreshAiProviderStatus();
     setAiThinking(false);
-  }, [clearTimers, hostedConfig, isAiControlled, readyMessage, setTrolleys]);
+  }, [clearTimers, hostedConfig, isAiControlled, readyMessage, refreshAiProviderStatus, setTrolleys]);
 
   const updateHostedConfig = useCallback((patch) => {
     setHostedConfig((current) => {
@@ -574,6 +629,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       setAiThinking(true);
       setAiProviderStatus({
         label: "Amazon Bedrock",
+        status: "working",
         message: "Bedrock is reading visible state and deciding whether this needs a tool.",
       });
 
@@ -589,14 +645,22 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           : proposalFromChatAnswer(bedrockResult.text, prompt);
         setAiProviderStatus({
           label: "Amazon Bedrock",
+          status: "ready",
           message: `${bedrockResult.modelId ?? "Bedrock model"} returned ${proposal.tool}.`,
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Bedrock operator failed.";
-        addAiMessage("error", `Bedrock bridge unavailable: ${errorMessage}`);
+        const bridgeOffline = isBridgeConnectionError(error);
+        addAiMessage(
+          "error",
+          bridgeOffline
+            ? `Bedrock bridge unavailable. Start it with npm run ai:bridge, then try again.`
+            : `Bedrock error: ${errorMessage}`,
+        );
         setAiProviderStatus({
           label: "Amazon Bedrock",
-          message: `Bridge error: ${errorMessage}`,
+          status: bridgeOffline ? "offline" : "error",
+          message: bridgeOffline ? AI_PROVIDER_OFFLINE.message : `Bedrock error: ${errorMessage}`,
         });
         setAiThinking(false);
         return;

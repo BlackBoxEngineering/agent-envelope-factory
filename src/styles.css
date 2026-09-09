@@ -2049,6 +2049,20 @@ button {
   color: color-mix(in srgb, #4fca85 72%, white);
 }
 
+.trace-state.checking,
+.trace-state.working {
+  border: 1px solid color-mix(in srgb, var(--ae-gold) 50%, #30323a);
+  background: color-mix(in srgb, var(--ae-gold) 16%, #101116);
+  color: color-mix(in srgb, var(--ae-gold) 74%, white);
+}
+
+.trace-state.offline,
+.trace-state.error {
+  border: 1px solid color-mix(in srgb, var(--ae-red) 54%, #30323a);
+  background: color-mix(in srgb, var(--ae-red) 15%, #101116);
+  color: color-mix(in srgb, var(--ae-red) 74%, white);
+}
+
 .decision,
 .hosted-portal-state {
   border-color: color-mix(in srgb, var(--ae-cyan) 32%, #30323a);
