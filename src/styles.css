@@ -571,6 +571,83 @@ button {
   gap: 14px;
 }
 
+.specter-ai-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.specter-ai-grid article {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--ae-red) 34%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, #151a22 82%, transparent);
+  padding: 14px;
+}
+
+.specter-ai-grid header {
+  display: grid;
+  gap: 4px;
+}
+
+.specter-ai-grid header span {
+  color: color-mix(in srgb, var(--ae-red) 74%, white);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.specter-ai-grid h3 {
+  margin: 0;
+  color: var(--ae-ink);
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.specter-ai-grid pre {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--ae-cyan) 18%, transparent);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.52);
+  color: var(--ae-gold-light);
+  padding: 10px;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.specter-ai-grid dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.specter-ai-grid dl div {
+  display: grid;
+  gap: 3px;
+}
+
+.specter-ai-grid dt {
+  color: var(--ae-cyan);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.specter-ai-grid dd {
+  margin: 0;
+  color: var(--ae-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .specter-attack-card {
   min-width: 0;
   border: 1px solid color-mix(in srgb, var(--ae-gold) 28%, transparent);
@@ -2510,6 +2587,7 @@ button {
 
   .specter-pipeline,
   .specter-source-strip,
+  .specter-ai-grid,
   .specter-attacks,
   .specter-boundary-grid,
   .specter-mappings {
