@@ -6,7 +6,8 @@
   "description": "Visual legitimacy simulator for AgentEnvelope manufacturing authority.",
   "scripts": {
     "ai:bridge": "node scripts/ai-operator-bridge.js",
-    "dev": "vite --host 127.0.0.1",
+    "dev": "node scripts/dev.js",
+    "dev:vite": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1"
   },

@@ -73,7 +73,8 @@ direct command injection.
 
 ## Bedrock Bridge
 
-The browser does not call Bedrock directly. Run the local bridge:
+The browser does not call Bedrock directly. During local development, `npm run dev` starts the
+Bedrock bridge and Vite app together. The bridge can also be run on its own for debugging:
 
 ```bash
 npm run ai:bridge
@@ -121,13 +122,18 @@ Run the app:
 npm run dev
 ```
 
-Run the AI bridge in a second terminal when testing the AI Factory Run:
+That starts both local processes:
 
-```bash
-npm run ai:bridge
-```
+- the Vite app on a local browser URL;
+- the Bedrock bridge on `http://127.0.0.1:8787`.
 
 Then open the Vite URL and select `AI Factory Run`.
+
+For app-only debugging, use:
+
+```bash
+npm run dev:vite
+```
 
 ## Hosted Records
 
