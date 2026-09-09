@@ -410,19 +410,126 @@ function useFactorySimulation() {
         return;
       }
 
-      setPhase("denied");
-      setStatus({
-        signature: "valid",
-        legitimacy: "denied",
-        evidence: "sufficient",
-        reasonCode: "replay.max_uses_exhausted",
-        message: "Replay used an old valid signature, but governed state says the one-use command was already consumed.",
-      });
-      setConsoleState((current) => ({
-        ...current,
-        hack: "$ hack-robot --replay old-command\nsignature: valid\nexecution: denied by maxUses and ledger state",
-      }));
-      addEvent("bad", "Replay attempt kept a valid signature but was denied by maxUses and governed ledger state.");
+      if (kind === "package-injection") {
+        setPhase("denied");
+        setStatus({
+          signature: "failed",
+          legitimacy: "denied",
+          evidence: "waiting",
+          reasonCode: "supply_chain.untrusted_package",
+          message: "A hallucinated package tried to publish a robot command, but it has no derived delegate authority.",
+        });
+        setConsoleState((current) => ({
+          ...current,
+          hack: "$ specter-slopsquat --candidate factory-route-optimizer\nregistry: gap\nattempt: emit robot command\nresult: blocked; no delegated signer",
+        }));
+        addEvent("bad", "Red SPECTER package injection attempt rejected: package provenance is not command authority.");
+        return;
+      }
+
+      if (kind === "ci-secret-compromise") {
+        setPhase("denied");
+        setStatus({
+          signature: "failed",
+          legitimacy: "denied",
+          evidence: "waiting",
+          reasonCode: "supply_chain.secret_exfiltration_attempt",
+          message: "A postinstall-style compromise tried to treat environment secrets as authority. Stop, rotate secrets, and re-issue scoped delegates.",
+        });
+        setConsoleState((current) => ({
+          ...current,
+          hack: "$ specter-slopsquat --vector ci_cd_compromise\npostinstall: attempted secret access\naction: stop line; rotate bot/API secrets",
+        }));
+        addEvent("bad", "CI/CD compromise scenario stopped the line: rotate secrets before accepting new factory commands.");
+        return;
+      }
+
+      if (kind === "orchestrator-jump") {
+        setPhase("denied");
+        setStatus({
+          signature: "failed",
+          legitimacy: "denied",
+          evidence: "sufficient",
+          reasonCode: "orchestrator.no_delegate_scope",
+          message: "An external attack orchestrator produced intent, not authority. The factory accepts only scoped, signed AgentEnvelope commands.",
+        });
+        setConsoleState((current) => ({
+          ...current,
+          hack: "$ warlord run T282 --mode full --target factory\ntool output: evidence report\nfactory action: denied; no delegate scope",
+        }));
+        addEvent("bad", "External orchestrator jump rejected: tool output is evidence, not executable factory authority.");
+        return;
+      }
+
+      if (kind === "telemetry-forgery") {
+        setPhase("denied");
+        setStatus({
+          signature: "valid",
+          legitimacy: "denied",
+          evidence: "insufficient",
+          reasonCode: "telemetry.untrusted_provenance",
+          message: "A forged sensor or log event tried to patch the hosted trail. Evidence must be independently attested and linked to the active record.",
+        });
+        setConsoleState((current) => ({
+          ...current,
+          hack: "$ red-specter vantage --forge-telemetry trolley4=truck\nportal patch: rejected\nreason: telemetry not linked to governed record",
+        }));
+        addEvent("bad", "Telemetry forgery rejected: hosted evidence must trace to the governed action record.");
+        return;
+      }
+
+      if (kind === "approval-forgery") {
+        setPhase("denied");
+        setStatus({
+          signature: "valid",
+          legitimacy: "denied",
+          evidence: "sufficient",
+          reasonCode: "governance.approval_forgery",
+          message: "A forged approval claimed legitimacy was allowed, but it was not signed by the governance repair authority.",
+        });
+        setConsoleState((current) => ({
+          ...current,
+          hack: "$ red-specter mandate --forge-approval ae-legit-current\napproval: rejected\nreason: wrong authority branch",
+        }));
+        addEvent("bad", "Governance approval forgery rejected: legitimacy changes require the governance authority branch.");
+        return;
+      }
+
+      if (kind === "intent-fragmentation") {
+        setPhase("denied");
+        setStatus({
+          signature: "failed",
+          legitimacy: "denied",
+          evidence: "sufficient",
+          reasonCode: "intent.aggregate_scope_mismatch",
+          message: "Fragmented subtasks tried to hide a broader goal. The aggregate action still has to fit the delegate and hosted policy.",
+        });
+        setConsoleState((current) => ({
+          ...current,
+          hack: "$ red-specter sif --decompose 'move stock, bypass bay controls'\nfragments: individually plausible\naggregate: denied by delegate scope",
+        }));
+        addEvent("bad", "Intent fragmentation rejected: small steps cannot smuggle an unauthorized aggregate action.");
+        return;
+      }
+
+      if (kind === "replay") {
+        setPhase("denied");
+        setStatus({
+          signature: "valid",
+          legitimacy: "denied",
+          evidence: "sufficient",
+          reasonCode: "replay.max_uses_exhausted",
+          message: "Replay used an old valid signature, but governed state says the one-use command was already consumed.",
+        });
+        setConsoleState((current) => ({
+          ...current,
+          hack: "$ hack-robot --replay old-command\nsignature: valid\nexecution: denied by maxUses and ledger state",
+        }));
+        addEvent("bad", "Replay attempt kept a valid signature but was denied by maxUses and governed ledger state.");
+        return;
+      }
+
+      addEvent("warn", `Unknown hack attempt ignored: ${kind}.`);
     },
     [activeRun, addEvent, clearTimers, recoverWithFreshCommand],
   );

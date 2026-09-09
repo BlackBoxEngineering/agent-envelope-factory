@@ -1,5 +1,6 @@
 import { useState } from "react";
 import FactoryFloor from "./components/FactoryFloor.jsx";
+import RedSpecterAttacks from "./components/RedSpecterAttacks.jsx";
 import SidePanel from "./components/SidePanel.jsx";
 import SetupGuide from "./components/SetupGuide.jsx";
 import Toolbar from "./components/Toolbar.jsx";
@@ -15,6 +16,8 @@ function App() {
 
       {view === "setup" ? (
         <SetupGuide onBack={() => setView("run")} />
+      ) : view === "specter" ? (
+        <RedSpecterAttacks onBack={() => setView("run")} />
       ) : (
         <section className="workspace">
           <SidePanel side="left" {...sidePanelProps} />

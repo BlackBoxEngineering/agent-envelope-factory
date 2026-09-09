@@ -1,4 +1,4 @@
-import { AlertTriangle, BookOpen, Factory, Play, RotateCcw } from "lucide-react";
+import { AlertTriangle, BookOpen, Factory, Play, RotateCcw, ShieldAlert } from "lucide-react";
 
 function speedLabel(speed) {
   if (speed === 1) return "normal";
@@ -6,7 +6,9 @@ function speedLabel(speed) {
 }
 
 function Toolbar({ canRun, canDisrupt, onRun, onDisrupt, onReset, onSpeedChange, onViewChange, speed, view }) {
+  const isRun = view === "run";
   const isSetup = view === "setup";
+  const isSpecter = view === "specter";
 
   return (
     <section className="toolbar" aria-label="Simulator controls">
@@ -18,7 +20,7 @@ function Toolbar({ canRun, canDisrupt, onRun, onDisrupt, onReset, onSpeedChange,
         </div>
       </div>
       <div className="toolbar-controls">
-        {!isSetup && (
+        {isRun && (
           <>
             <label className="speed-control" title="Slow the robot down so you can trigger disruptions while it is in transit">
               <span>Robot speed</span>
@@ -49,13 +51,17 @@ function Toolbar({ canRun, canDisrupt, onRun, onDisrupt, onReset, onSpeedChange,
           </>
         )}
         <div className="view-switch" aria-label="Factory views">
-          <button type="button" className={!isSetup ? "selected" : ""} onClick={() => onViewChange("run")}>
+          <button type="button" className={isRun ? "selected" : ""} onClick={() => onViewChange("run")}>
             <Factory size={16} aria-hidden="true" />
             Factory run
           </button>
           <button type="button" className={isSetup ? "selected" : ""} onClick={() => onViewChange("setup")}>
             <BookOpen size={16} aria-hidden="true" />
             Setup guide
+          </button>
+          <button type="button" className={isSpecter ? "selected" : ""} onClick={() => onViewChange("specter")}>
+            <ShieldAlert size={16} aria-hidden="true" />
+            Red Spectre
           </button>
         </div>
       </div>

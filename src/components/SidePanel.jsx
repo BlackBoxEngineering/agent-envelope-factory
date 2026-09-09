@@ -82,51 +82,156 @@ function OperationStatePanel({ status }) {
 export default SidePanel;
 
 function DisruptionPanel({ onScenarioBug }) {
+  const disruptions = [
+    {
+      id: "move-trolley",
+      title: "Move trolley",
+      summary: "Operator changes physical reality while R2 is en route.",
+      effect: "Repairs state and reroutes with a fresh signed command.",
+    },
+    {
+      id: "stale-evidence",
+      title: "Stale evidence",
+      summary: "Old sensor facts arrive after the current command is active.",
+      effect: "Quarantines the stale fact; execution continues.",
+    },
+    {
+      id: "sensor-conflict",
+      title: "Sensor conflict",
+      summary: "Two evidence sources disagree about trolley4 location.",
+      effect: "Marks evidence noisy; serious crypto authority still holds.",
+    },
+  ];
+
   return (
-    <div className="status-panel action-panel">
-      <div className="panel-heading">
+    <details className="status-panel action-panel disruption-panel" open>
+      <summary className="panel-heading disruption-summary">
         <Bug size={18} aria-hidden="true" />
-        <h2>Known Disruptions</h2>
+        <h2>Handled Disruptions</h2>
+      </summary>
+      <div className="disruption-list">
+        <p>These disruptions are expected noise; they are repaired or quarantined without stopping the flow.</p>
+        {disruptions.map((disruption) => (
+          <button key={disruption.id} type="button" onClick={() => onScenarioBug(disruption.id)}>
+            <strong>{disruption.title}</strong>
+            <span>{disruption.summary}</span>
+            <small>{disruption.effect}</small>
+          </button>
+        ))}
       </div>
-      <div className="button-grid">
-        <button type="button" onClick={() => onScenarioBug("move-trolley")} title="Move trolley4 and force a reality mismatch">
-          Move trolley
-        </button>
-        <button type="button" onClick={() => onScenarioBug("stale-evidence")} title="Simulate stale sensor evidence">
-          Stale evidence
-        </button>
-        <button type="button" onClick={() => onScenarioBug("sensor-conflict")} title="Simulate conflicting independent evidence">
-          Sensor conflict
-        </button>
-      </div>
-    </div>
+    </details>
   );
 }
 
 function HackConsole({ consoleState, onHackAttempt }) {
+  const attackGroups = [
+    [
+      "Recoverable",
+      [
+        {
+          id: "tamper-target",
+          title: "Tamper bay",
+          summary: "Change the target bay after the command was signed.",
+          effect: "Bad command is discarded; fresh scoped authority can be issued from known state.",
+        },
+      ],
+    ],
+    [
+      "Stop and review",
+      [
+        {
+          id: "scope-escalation",
+          title: "Scope jump",
+          summary: "Change pickUp into an operation outside the signed envelope.",
+          effect: "Privilege escalation fails closed and should not auto-recover.",
+        },
+        {
+          id: "replay",
+          title: "Replay command",
+          summary: "Try to reuse an old one-use command.",
+          effect: "Spent authority is denied by ledger state and should be investigated.",
+        },
+      ],
+    ],
+    [
+      "Red SPECTER supply chain",
+      [
+        {
+          id: "package-injection",
+          title: "Fake package command",
+          summary: "A hallucinated dependency tries to emit a robot command.",
+          effect: "Package code has no delegate scope; execution stops at signature provenance.",
+        },
+        {
+          id: "ci-secret-compromise",
+          title: "CI secret theft",
+          summary: "An install hook claims it can use build secrets as robot authority.",
+          effect: "Environment is treated as compromised; rotate secrets before continuing.",
+        },
+        {
+          id: "orchestrator-jump",
+          title: "Orchestrator jump",
+          summary: "An external attack runner tries to turn findings into a factory action.",
+          effect: "Tool output is evidence only; it cannot become derived command authority.",
+        },
+        {
+          id: "telemetry-forgery",
+          title: "Forge telemetry",
+          summary: "A fake log or sensor event tries to patch the hosted trail.",
+          effect: "Unsigned telemetry is rejected; evidence must be linked to a governed record.",
+        },
+        {
+          id: "approval-forgery",
+          title: "Fake approval",
+          summary: "A forged governance message claims legitimacy was allowed.",
+          effect: "Approval fails without the legitimacy-bound governance authority.",
+        },
+        {
+          id: "intent-fragmentation",
+          title: "Fragment intent",
+          summary: "Small permitted-looking steps hide a broader unauthorized goal.",
+          effect: "Aggregate intent must still fit the scoped delegate and hosted policy.",
+        },
+      ],
+    ],
+    [
+      "Recovery action",
+      [
+        {
+          id: "recover",
+          title: "Fix state",
+          summary: "Discard bad command state and issue fresh authority.",
+          effect: "A new scoped signature repairs the flow after a recoverable mismatch.",
+        },
+      ],
+    ],
+  ];
+
   return (
-    <div className="status-panel terminal-panel">
-      <div className="panel-heading">
+    <details className="status-panel terminal-panel attack-panel" open>
+      <summary className="panel-heading attack-summary">
         <Terminal size={18} aria-hidden="true" />
         <h2>Hack Robot Commands</h2>
+      </summary>
+      <div className="attack-console-body">
+        <pre>{consoleState?.hack ?? "$ hack-robot\nwaiting"}</pre>
+        <p>Recoverable corruption can be repaired with fresh scoped authority. Scope escalation and replay stop the command and require review.</p>
+        <div className="attack-list">
+          {attackGroups.map(([group, attacks]) => (
+            <section key={group} className="attack-group">
+              <h3>{group}</h3>
+              {attacks.map((attack) => (
+                <button key={attack.id} type="button" onClick={() => onHackAttempt(attack.id)}>
+                  <strong>{attack.title}</strong>
+                  <span>{attack.summary}</span>
+                  <small>{attack.effect}</small>
+                </button>
+              ))}
+            </section>
+          ))}
+        </div>
       </div>
-      <pre>{consoleState?.hack ?? "$ hack-robot\nwaiting"}</pre>
-      <div className="button-grid">
-        <button type="button" onClick={() => onHackAttempt("tamper-target")} title="Change the target bay after the command was signed">
-          Tamper bay
-        </button>
-        <button type="button" onClick={() => onHackAttempt("scope-escalation")} title="Change the operation outside the signed action envelope">
-          Scope jump
-        </button>
-        <button type="button" onClick={() => onHackAttempt("replay")} title="Replay an old one-use command">
-          Replay
-        </button>
-        <button type="button" onClick={() => onHackAttempt("recover")} title="Discard bad command state and reissue fresh authority">
-          Fix state
-        </button>
-      </div>
-      <p>Command hacks cannot mint new authority; bad commands are discarded and repaired with a fresh signature.</p>
-    </div>
+    </details>
   );
 }
 
@@ -273,11 +378,16 @@ function HostedRecordsPanel({ activeRun, hosted }) {
 function ActorFlowPanel({ activeRun, phase, status }) {
   const commandTarget = activeRun?.command?.args?.bayId ?? "bay7";
   const reasonCode = status.reasonCode ?? "";
-  const cryptoBlocked = reasonCode.startsWith("crypto.") || reasonCode.startsWith("envelope.");
+  const cryptoBlocked =
+    reasonCode.startsWith("crypto.") ||
+    reasonCode.startsWith("envelope.") ||
+    reasonCode.startsWith("supply_chain.") ||
+    reasonCode.startsWith("orchestrator.") ||
+    reasonCode.startsWith("intent.");
   const replayBlocked = reasonCode.startsWith("replay.");
-  const evidenceBlocked = reasonCode.startsWith("evidence.");
+  const evidenceBlocked = reasonCode.startsWith("evidence.") || reasonCode.startsWith("telemetry.");
   const disruptionReview = reasonCode.startsWith("disruption.") || reasonCode === "portal.evidence_refresh";
-  const portalBlocked = reasonCode.startsWith("portal.legitimacy");
+  const portalBlocked = reasonCode.startsWith("portal.legitimacy") || reasonCode.startsWith("governance.");
   const observedTarget = status.reasonCode === "state.mismatched" ? "new bay" : commandTarget;
   const actors = [
     {
