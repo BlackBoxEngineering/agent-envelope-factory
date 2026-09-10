@@ -45,7 +45,7 @@ const actors = {
 const authorityPolicy = {
   robotId: "robot2",
   operations: ["pickUp"],
-  bays: ["bay2", "bay3", "bay4", "bay5", "bay6", "bay7", "bay8"],
+  bays: ["bay1", "bay2", "bay3", "bay4", "bay5", "bay6", "bay7", "bay8"],
   renewal: {
     executingActorId: actors.RobotBot.actorId,
     minIndependentSources: 2,
@@ -65,7 +65,7 @@ const slots = {
   truck: { id: "truck", label: "Truck", x: 83, y: 70, kind: "truck" },
 };
 
-const movableBayCycle = ["bay4", "bay5", "bay6", "bay7", "bay8", "bay3", "bay2"];
+const movableBayCycle = ["bay4", "bay5", "bay6", "bay7", "bay8", "bay3", "bay2", "bay1"];
 
 const initialTrolleys = [
   { id: "trolley4", slot: "bay7", label: "Trolley 4", free: true },
