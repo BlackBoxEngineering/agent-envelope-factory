@@ -1809,7 +1809,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     if (!drag) return;
     const snapSlots =
       drag.id === "trolley4" && canDisrupt
-        ? authorityPolicy.bays.map((bayId) => slots[bayId])
+        ? Object.values(slots).filter((slot) => slot.kind === "bay")
         : Object.values(slots);
     const nearest = snapSlots.reduce(
       (best, slot) => {
