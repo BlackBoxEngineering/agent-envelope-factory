@@ -2,6 +2,7 @@
   "name": "agent-envelope-factory",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Visual legitimacy simulator for AgentEnvelope manufacturing authority.",
   "scripts": {
