@@ -112,6 +112,8 @@ const AI_PRESETS = [
 
 const AI_OPERATOR_BRIDGE_URL = import.meta.env.VITE_AI_OPERATOR_BRIDGE_URL ?? "http://127.0.0.1:8787/ai/operator";
 const AI_OPERATOR_HEALTH_URL = AI_OPERATOR_BRIDGE_URL.replace(/\/ai\/operator\/?$/, "/health");
+const AI_OPERATOR_REQUEST_TIMEOUT_MS = 90_000;
+const AI_OPERATOR_HEALTH_TIMEOUT_MS = 8_000;
 const INITIAL_TARGET = factoryPlan.command.initialTarget;
 const AI_PROVIDER_CHECKING = {
   label: "Amazon Bedrock",
@@ -254,11 +256,20 @@ function proposalFromChatAnswer(answer, prompt) {
 }
 
 async function requestBedrockOperator({ prompt, presetId, state }) {
-  const response = await fetch(AI_OPERATOR_BRIDGE_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, presetId, state }),
-  });
+  let response;
+  try {
+    response = await fetch(AI_OPERATOR_BRIDGE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, presetId, state }),
+      signal: AbortSignal.timeout(AI_OPERATOR_REQUEST_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (error?.name === "TimeoutError") {
+      throw new Error(`Bedrock bridge did not respond within ${Math.round(AI_OPERATOR_REQUEST_TIMEOUT_MS / 1000)} seconds.`);
+    }
+    throw error;
+  }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(body.error || `Bedrock bridge returned ${response.status}`);
@@ -270,7 +281,7 @@ async function requestBedrockOperator({ prompt, presetId, state }) {
 }
 
 async function requestBedrockHealth() {
-  const response = await fetch(AI_OPERATOR_HEALTH_URL);
+  const response = await fetch(AI_OPERATOR_HEALTH_URL, { signal: AbortSignal.timeout(AI_OPERATOR_HEALTH_TIMEOUT_MS) });
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body.ok) {
     throw new Error(body.error || `Bedrock bridge health returned ${response.status}`);
@@ -282,8 +293,9 @@ async function requestBedrockHealth() {
 }
 
 function isBridgeConnectionError(error) {
+  if (error?.name === "TimeoutError") return true;
   const message = error instanceof Error ? error.message : String(error);
-  return /failed to fetch|networkerror|load failed|connection|refused|unable to connect/i.test(message);
+  return /failed to fetch|networkerror|load failed|connection|refused|unable to connect|did not respond/i.test(message);
 }
 
 function useFactorySimulation({ controller = "manual" } = {}) {
@@ -809,10 +821,10 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           setStatus((current) => ({
             ...current,
             reasonCode: "ai.speed_changed",
-            message: `AI operator set RobotBot speed to ${proposal.speed < 1 ? "slow" : "fast"} for troubleshooting.`,
+            message: `AI operator set RobotBot speed to ${proposal.speed < 1 ? "slow" : proposal.speed > 1 ? "fast" : "normal"} for troubleshooting.`,
           }));
-          reportAiToolOutcome("tool", proposal, `Recorded speed change. RobotBot is now ${proposal.speed < 1 ? "slowed for inspection" : "sped up for recovery"}.`);
-          addEvent("ok", `AI operator changed simulator speed to ${proposal.speed < 1 ? "slow" : "fast"}.`);
+          reportAiToolOutcome("tool", proposal, `Recorded speed change. RobotBot is now ${proposal.speed < 1 ? "slowed for inspection" : proposal.speed > 1 ? "sped up for recovery" : "restored to normal speed"}.`);
+          addEvent("ok", `AI operator changed simulator speed to ${proposal.speed < 1 ? "slow" : proposal.speed > 1 ? "fast" : "normal"}.`);
           return;
         }
 

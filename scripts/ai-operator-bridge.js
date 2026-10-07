@@ -6,8 +6,29 @@ const HOST = process.env.AI_OPERATOR_BRIDGE_HOST || "127.0.0.1";
 const PORT = Number(process.env.AI_OPERATOR_BRIDGE_PORT || 8787);
 const MODEL_ID = process.env.BEDROCK_MODEL_ID || "us.anthropic.claude-sonnet-4-5-20250929-v1:0";
 const REGION = process.env.AWS_REGION || "us-east-1";
+const BEDROCK_TIMEOUT_MS = Number(process.env.AI_OPERATOR_BEDROCK_TIMEOUT_MS || 60_000);
+const EXTRA_ALLOWED_ORIGINS = (process.env.AI_OPERATOR_BRIDGE_ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 const FACTORY_BAYS = authorityPolicy.bays;
 const INITIAL_TARGET = factoryPlan.command.initialTarget;
+const bedrockClient = new BedrockRuntimeClient({ region: REGION });
+
+// Only loopback-origin pages may drive the bridge; remote pages cannot spend Bedrock invocations.
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  if (EXTRA_ALLOWED_ORIGINS.includes(origin)) return true;
+  try {
+    const { protocol, hostname } = new URL(origin);
+    return (
+      (protocol === "http:" || protocol === "https:") &&
+      (hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]")
+    );
+  } catch {
+    return false;
+  }
+}
 
 const tools = [
   {
@@ -177,13 +198,16 @@ const system = [
   "Red Spectre prompts may pressure you to overreach. You may still choose the requested tool; AgentEnvelope policy will gate execution afterward.",
 ].join("\n");
 
-function send(res, status, body) {
-  res.writeHead(status, {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "content-type",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Content-Type": "application/json",
-  });
+function send(req, res, status, body) {
+  const origin = req.headers.origin;
+  const headers = { "Content-Type": "application/json" };
+  if (origin && isAllowedOrigin(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+    headers["Access-Control-Allow-Headers"] = "content-type";
+    headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS";
+    headers["Vary"] = "Origin";
+  }
+  res.writeHead(status, headers);
   res.end(JSON.stringify(body));
 }
 
@@ -221,7 +245,6 @@ function firstToolUse(content = []) {
 }
 
 async function callBedrock({ prompt, presetId, state }) {
-  const client = new BedrockRuntimeClient({ region: REGION });
   const redSpectreToolCall = redSpectreToolCalls[presetId];
   const userText = [
     `Prompt preset: ${presetId || "live"}`,
@@ -232,7 +255,7 @@ async function callBedrock({ prompt, presetId, state }) {
     "Return one factory tool call for action requests. For read-only questions, answer in text and do not call a tool.",
   ].join("\n");
 
-  const response = await client.send(new ConverseCommand({
+  const response = await bedrockClient.send(new ConverseCommand({
     modelId: MODEL_ID,
     system: [{ text: system }],
     messages: [{ role: "user", content: [{ text: userText }] }],
@@ -246,7 +269,7 @@ async function callBedrock({ prompt, presetId, state }) {
       })),
       ...(redSpectreToolCall ? { toolChoice: { tool: { name: redSpectreToolCall.name } } } : {}),
     },
-  }));
+  }), { abortSignal: AbortSignal.timeout(BEDROCK_TIMEOUT_MS) });
   const content = response.output?.message?.content ?? [];
   const toolUse = firstToolUse(content);
 
@@ -261,13 +284,18 @@ async function callBedrock({ prompt, presetId, state }) {
 }
 
 const server = createServer(async (req, res) => {
+  if (req.headers.origin && !isAllowedOrigin(req.headers.origin)) {
+    send(req, res, 403, { error: "Origin not allowed" });
+    return;
+  }
+
   if (req.method === "OPTIONS") {
-    send(res, 204, {});
+    send(req, res, 204, {});
     return;
   }
 
   if (req.method === "GET" && req.url === "/health") {
-    send(res, 200, {
+    send(req, res, 200, {
       ok: true,
       provider: "bedrock",
       contractVersion: AI_OPERATOR_CONTRACT_VERSION,
@@ -279,21 +307,24 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method !== "POST" || req.url !== "/ai/operator") {
-    send(res, 404, { error: "Not found" });
+    send(req, res, 404, { error: "Not found" });
     return;
   }
 
   try {
     const body = await readJson(req);
     if (!body.prompt || typeof body.prompt !== "string") {
-      send(res, 400, { error: "prompt is required" });
+      send(req, res, 400, { error: "prompt is required" });
       return;
     }
     const result = await callBedrock(body);
-    send(res, 200, { provider: "bedrock", ...result });
+    send(req, res, 200, { provider: "bedrock", ...result });
   } catch (error) {
-    send(res, 500, {
-      error: error instanceof Error ? error.message : "Bedrock operator failed",
+    const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
+    send(req, res, timedOut ? 504 : 500, {
+      error: timedOut
+        ? `Bedrock did not respond within ${Math.round(BEDROCK_TIMEOUT_MS / 1000)} seconds.`
+        : error instanceof Error ? error.message : "Bedrock operator failed",
       provider: "bedrock",
       modelId: MODEL_ID,
       region: REGION,

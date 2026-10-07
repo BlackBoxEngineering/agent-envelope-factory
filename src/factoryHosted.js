@@ -576,8 +576,18 @@ async function hostedVerify(apiKey, input) {
   });
 }
 
+const HOSTED_REQUEST_TIMEOUT_MS = 20_000;
+
 async function hostedJson(url, init) {
-  const response = await fetch(url, init);
+  let response;
+  try {
+    response = await fetch(url, { ...init, signal: AbortSignal.timeout(HOSTED_REQUEST_TIMEOUT_MS) });
+  } catch (err) {
+    if (err?.name === "TimeoutError") {
+      throw new Error(`Hosted request timed out after ${Math.round(HOSTED_REQUEST_TIMEOUT_MS / 1000)} seconds.`);
+    }
+    throw err;
+  }
   let body;
   try {
     body = await response.json();
