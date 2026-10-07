@@ -1,4 +1,4 @@
-import { CheckCircle2, ClipboardList, Globe2, KeyRound, Link2, ShieldCheck } from "lucide-react";
+import { Bot, CheckCircle2, ClipboardList, Cloud, Globe2, KeyRound, Link2, ShieldCheck } from "lucide-react";
 import robotDelegate from "../../mint-delegate.json";
 import plannerDelegate from "../../mint-delegate.planner.json";
 import evidenceDelegate from "../../mint-delegate.evidence.json";
@@ -44,10 +44,10 @@ function SetupGuide({ onBack }) {
     <section className="setup-page">
       <div className="setup-hero">
         <div>
-          <h1>Authority branches for the factory demo</h1>
+          <h1>Factory setup: Bedrock and hosted records</h1>
           <p>
-            Log into agentenvelope.io, create one robotics domain, issue four legitimacy-bound
-            delegates, store their handoff JSON in this app, then add the API key and role secrets locally.
+            Bedrock powers the optional AI operator. The AgentEnvelope portal separately powers the
+            optional hosted authority trail. The manual factory works without either service.
           </p>
         </div>
         <button type="button" onClick={onBack}>
@@ -56,15 +56,29 @@ function SetupGuide({ onBack }) {
       </div>
 
       <div className="setup-grid">
-        <SetupCard icon={Globe2} title="1. Log into the portal">
+        <SetupCard icon={Cloud} title="1. Configure Bedrock for the AI run">
           <ol className="setup-steps">
-            <li>Open agentenvelope.io and sign in to the hosted governance portal.</li>
+            <li>Use your own AWS account and an IAM identity with <code>bedrock:InvokeModel</code>.</li>
+            <li>Confirm the configured Claude model is available in <code>us-east-1</code>.</li>
+            <li>Configure AWS SSO or a local AWS profile, then run <code>aws sts get-caller-identity</code>.</li>
+            <li>Run <code>npm run dev</code>. The Node bridge resolves your local AWS identity; no AWS credential belongs in this repository.</li>
+          </ol>
+          <p>
+            Bedrock is required only for AI Factory Run. It is independent of hosted AgentEnvelope
+            records and never receives the factory's private authority material.
+          </p>
+        </SetupCard>
+
+        <SetupCard icon={Globe2} title="2. Open the AgentEnvelope portal">
+          <ol className="setup-steps">
+            <li>Open <a href="https://agentenvelope.io" target="_blank" rel="noreferrer">agentenvelope.io</a> and sign in.</li>
             <li>Create or unlock the vault you want this factory authority to derive from.</li>
-            <li>Use the same account when creating the API key, domain, legitimacy state, and delegates.</li>
+            <li>Use the same account for the API key, domain, legitimacy states, and delegates.</li>
+            <li>From Account, copy the User ID and create or rotate an API key.</li>
           </ol>
         </SetupCard>
 
-        <SetupCard icon={ShieldCheck} title="2. Create the domain">
+        <SetupCard icon={ShieldCheck} title="3. Create the domain">
           <dl className="setup-facts">
             <Fact label="Namespace">{DOMAIN.namespace}</Fact>
             <Fact label="Domain">{DOMAIN.domainId}</Fact>
@@ -74,7 +88,11 @@ function SetupGuide({ onBack }) {
           </dl>
         </SetupCard>
 
-        <SetupCard icon={ClipboardList} title="3. Issue these delegates">
+        <SetupCard icon={ClipboardList} title="4. Issue these delegates">
+          <p>
+            Create each delegate under this domain with attached legitimacy, a future expiry,
+            <code> maxUsesPerAction: 1</code>, and only the operations and resources shown below.
+          </p>
           <div className="delegate-table">
             {DELEGATES.map((item) => (
               <DelegateRow key={item.delegate.delegateId} item={item} />
@@ -82,7 +100,17 @@ function SetupGuide({ onBack }) {
           </div>
         </SetupCard>
 
-        <SetupCard icon={KeyRound} title="4. Fill local env">
+        <SetupCard icon={Bot} title="5. Collect each worker handoff">
+          <ol className="setup-steps">
+            <li>Copy each delegate's handoff JSON into the matching filename shown above.</li>
+            <li>Copy the one-time mint material before leaving the portal; it is not recoverable without unlocking the vault again.</li>
+            <li>Generate a separate 32-byte bot key for every role. The portal does not provide worker private keys.</li>
+          </ol>
+          <pre><code>{`node --input-type=module -e "import { randomBytes } from 'node:crypto'; console.log(randomBytes(32).toString('hex'))"`}</code></pre>
+          <p>Run the command four times and keep every result private.</p>
+        </SetupCard>
+
+        <SetupCard icon={KeyRound} title="6. Configure the local session">
           <div className="env-list">
             <code>VITE_AE_API_KEY</code>
             <code>VITE_AE_OWNER_USER_ID</code>
@@ -94,18 +122,24 @@ function SetupGuide({ onBack }) {
             ))}
           </div>
           <p>
-            The browser app reads these from `.env.local` for local smoke tests. Do not deploy a
-            production build with private `VITE_AE_*` values baked in.
+            Prefer entering these values in the Hosted Records panel for the current browser
+            session. Alternatively, copy `.env.example` to `.env.local` for repeatable local
+            development and restart the dev server. Do not deploy a production build with private
+            `VITE_AE_*` values baked in.
           </p>
         </SetupCard>
 
-        <SetupCard icon={Link2} title="5. Run and check the hosted trail">
+        <SetupCard icon={Link2} title="7. Run and check the hosted trail">
           <ol className="setup-steps">
             <li>Start the factory app and confirm Hosted Records says portal active.</li>
             <li>Press Run; each role auto-publishes through API-key hosted routes.</li>
             <li>Open Records to see delegated action records for the factory roles.</li>
             <li>Open Ledger Activity to see mint, register, verify, and legitimacy facts.</li>
           </ol>
+          <p>
+            Hosted Records are optional. Without this portal configuration, the local factory and
+            Bedrock operator still run; only hosted publication is skipped.
+          </p>
         </SetupCard>
       </div>
     </section>

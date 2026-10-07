@@ -9,8 +9,21 @@ It now has two separate factory runs:
 - `Factory Run`: the original no-AI simulator controlled by the user.
 - `AI Factory Run`: a Bedrock-backed LLM operator replaces the human troubleshooter, while AgentEnvelope still gates every factory-changing tool call.
 
-The repo is marked private in `package.json`. Treat it as a deployable demo repo, not a public sample
-with baked credentials.
+The repository is public. The `"private": true` package setting only prevents accidental npm
+publication. Never commit `.env.local`, AWS credentials, API keys, bot keys, or mint material.
+
+## Choose A Setup Level
+
+The three setup levels are independent:
+
+1. **Manual Factory Run** needs only Node.js and the local Vite app.
+2. **AI Factory Run** additionally needs the user's own AWS identity, Bedrock model access, and
+   `bedrock:InvokeModel` permission. It does not require AgentEnvelope hosted credentials.
+3. **Hosted Records** are optional. They additionally need an AgentEnvelope portal account, API key,
+   four role delegates, four bot keys, and the one-time mint material for each delegate.
+
+The deterministic Playwright smoke tests use a mock operator and need neither AWS nor hosted
+AgentEnvelope credentials.
 
 ## What Is In The App
 
@@ -139,11 +152,49 @@ The bridge exposes:
 - `GET /health`
 - `POST /ai/operator`
 
-It sends Bedrock the external prompt, visible simulator state, and tool schemas. It does not receive
-AgentEnvelope seeds, private keys, bot keys, mint material, AWS secrets, or hosted API secrets.
+It sends Bedrock the external prompt, visible simulator state, and tool schemas. It does not send
+AgentEnvelope seeds, private keys, bot keys, mint material, hosted API secrets, or AWS credentials
+to the browser or model input. The Node bridge's AWS SDK resolves AWS credentials locally and uses
+them only to sign the Bedrock request.
 
-Use AWS credentials from your local environment, profile, or the same Bedrock setup pattern used by
-`agent-envelope-example`.
+### Bedrock prerequisites
+
+Each person running the bridge supplies their own AWS account and identity. Cloning this repository
+does not provide access to another user's AWS account.
+
+1. Install Node.js 22 and, for the setup commands below, the AWS CLI.
+2. In Amazon Bedrock, confirm that the configured model is available to the account in `us-east-1`.
+3. Give the local IAM user or role `bedrock:InvokeModel` permission for the configured model or
+   inference profile.
+4. Configure a local AWS identity using SSO or a shared credentials profile:
+
+```bash
+# Recommended for an AWS IAM Identity Center account
+aws configure sso
+aws sso login --profile your-profile
+
+# Or configure a default shared credentials profile
+aws configure
+```
+
+5. Confirm that AWS can resolve the identity before starting the factory:
+
+```bash
+aws sts get-caller-identity
+```
+
+When using a named profile, set it in the same terminal that starts the factory:
+
+```bash
+# macOS/Linux
+export AWS_PROFILE=your-profile
+
+# PowerShell
+$env:AWS_PROFILE = "your-profile"
+```
+
+AWS credentials normally remain outside this repository in the user's local AWS configuration,
+environment, or workload role. Do not put AWS credentials in `.env.local` or any `VITE_*` variable.
 
 ## Run Locally
 
@@ -204,9 +255,9 @@ Use `npm run test:smoke:headed` to watch the browser. CI runs the same suite thr
 
 ## Hosted Records
 
-The simulator runs fully local by default. If hosted credentials are configured, signed factory
-commands auto-publish through AgentEnvelope hosted governance. There is no publish button in the
-current UI.
+The simulator runs fully locally by default. Hosted Records are optional and are independent of
+Bedrock. If hosted credentials are configured, signed factory commands auto-publish through
+AgentEnvelope hosted governance. There is no publish button in the current UI.
 
 The hosted path uses API-key routes for:
 
@@ -215,7 +266,60 @@ The hosted path uses API-key routes for:
 - hosted verification;
 - ledger activity.
 
-Copy `.env.example` to `.env.local` for local smoke tests:
+### 1. Create the portal authority
+
+1. Sign in to `https://agentenvelope.io` and create or unlock the browser-held vault.
+2. If required for the account, activate hosted governance so API keys, legitimacy, records, and
+   ledgers are available.
+3. Open **Account** and copy the **User ID** for `VITE_AE_OWNER_USER_ID`.
+4. Open **Account -> API keys**, create or rotate a key, and copy it immediately for
+   `VITE_AE_API_KEY`.
+5. Create this domain:
+
+```yaml
+namespace: factory-automation
+domainId: logistic-control
+kind: robotics
+```
+
+6. Under that domain, issue one legitimacy-bound delegate for each role listed below. The current
+   demo uses `any-signed-bot`, action indexes `0-10000`, `maxMints: 500`, `maxUsesPerAction: 1`, and
+   a future expiry.
+7. For every role, copy the **handoff JSON** into the matching file in this repository and copy the
+   **one-time mint material** before leaving the portal. Mint material is not stored by the portal
+   and cannot be recovered without unlocking the vault again.
+
+| Role | Handoff JSON destination | Bot-key variable | Mint-material variable |
+| --- | --- | --- | --- |
+| RobotBot | `mint-delegate.json` | `VITE_AE_ROBOT_BOT_KEY` | `VITE_AE_ROBOT_MINT_MATERIAL` |
+| PlannerBot | `mint-delegate.planner.json` | `VITE_AE_PLANNER_BOT_KEY` | `VITE_AE_PLANNER_MINT_MATERIAL` |
+| Evidence authorities | `mint-delegate.evidence.json` | `VITE_AE_EVIDENCE_BOT_KEY` | `VITE_AE_EVIDENCE_MINT_MATERIAL` |
+| Governance evaluator | `mint-delegate.governance.json` | `VITE_AE_GOVERNANCE_BOT_KEY` | `VITE_AE_GOVERNANCE_MINT_MATERIAL` |
+
+The committed delegate files are examples tied to their issuing account head and legitimacy state.
+A different portal account must issue and use its own delegates rather than mixing credentials with
+the committed examples.
+
+### 2. Generate the worker bot keys
+
+The portal does not supply worker private keys. Generate a separate 32-byte bot key for each role
+and keep each output private:
+
+```bash
+node --input-type=module -e "import { randomBytes } from 'node:crypto'; console.log(randomBytes(32).toString('hex'))"
+```
+
+Run that command four times and assign one result to each role's bot-key variable. For stricter
+deployments, issue delegates with `address-set` bot policy and include the corresponding derived bot
+addresses instead of using `any-signed-bot`.
+
+### 3. Configure the local demo
+
+The preferred interactive path is to start the app, open **Hosted Records**, enter the account,
+role, and API values, and save them for the current browser session. This stores them in
+`sessionStorage`; they remain browser-visible and are suitable only for this local demo.
+
+For repeatable local development, copy `.env.example` to `.env.local` and fill the same values:
 
 ```text
 VITE_AE_API_KEY=
@@ -232,18 +336,12 @@ VITE_AE_GOVERNANCE_BOT_KEY=
 VITE_AE_GOVERNANCE_MINT_MATERIAL=
 ```
 
-Delegate JSON files are loaded from:
+Restart `npm run dev` after changing `.env.local`. Delegate JSON files are loaded from:
 
 - `mint-delegate.json`
 - `mint-delegate.planner.json`
 - `mint-delegate.evidence.json`
 - `mint-delegate.governance.json`
-
-The expected factory domain is:
-
-```yaml
-factory-automation / logistic-control / robotics
-```
 
 Role scopes:
 
@@ -267,6 +365,16 @@ Governance evaluator:
 
 `VITE_AE_*` values are browser-visible in a static build. For a real deployment, keep API keys, bot
 keys, mint material, Bedrock credentials, and other secrets in a server or worker secret store.
+
+### 4. Confirm the hosted trail
+
+1. Start the app and confirm **Hosted Records** reports `Portal active`.
+2. Start either factory run. Every accepted command automatically publishes the four role records.
+3. Open **Records** to inspect the delegated action records.
+4. Open **Ledger -> Activity** to inspect mint, registration, verification, and legitimacy events.
+
+If Hosted Records is not configured, the local simulation and Bedrock operator continue to work;
+only hosted publication is skipped.
 
 ## Red Spectre
 
