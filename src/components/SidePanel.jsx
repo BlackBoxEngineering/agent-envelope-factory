@@ -51,7 +51,7 @@ function SidePanel({
     return (
       <aside className="side-panel left-panel ai-left-panel">
         <OperationStatePanel status={status} />
-        <AiOperatorStatePanel action={ai?.proposedAction} provider={ai?.provider} />
+        <AiOperatorStatePanel provider={ai?.provider} />
         <AiPromptPanel ai={ai} placement="sidebar" />
         <AiProposedActionPanel action={ai?.proposedAction} />
         <AiIntentStream attempts={ai?.attempts ?? []} />
@@ -281,8 +281,8 @@ function HackConsole({ consoleState, onHackAttempt }) {
   );
 }
 
-function AiOperatorStatePanel({ action, provider }) {
-  const operatorState = action?.status ?? provider?.status ?? "waiting";
+function AiOperatorStatePanel({ provider }) {
+  const operatorState = provider?.status ?? "waiting";
   return (
     <details className="status-panel ai-operator-state">
       <summary className="panel-heading ai-summary">
@@ -291,8 +291,8 @@ function AiOperatorStatePanel({ action, provider }) {
         <span className={`trace-state ${operatorState}`}>{operatorState}</span>
       </summary>
       <div className="ai-model-state">
-        <strong>{action?.proposedTool ?? provider?.label ?? "Amazon Bedrock"}</strong>
-        <span>{action?.boundaryResult ?? provider?.message ?? "Simulator hands only. AgentEnvelope keeps authority."}</span>
+        <strong>{provider?.label ?? "Amazon Bedrock"}</strong>
+        <span>{provider?.message ?? "Simulator hands only. AgentEnvelope keeps authority."}</span>
       </div>
     </details>
   );
@@ -315,12 +315,17 @@ function AiPromptPanel({ ai, placement = "rail" }) {
     thread.scrollTop = thread.scrollHeight;
   }, [messages, ai?.thinking]);
 
-  const dockChat = useCallback(() => {
-    const popup = popupRef.current;
+  const dockChat = useCallback((event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const eventWindow = event?.currentTarget?.ownerDocument?.defaultView;
+    const popup = eventWindow && eventWindow !== window ? eventWindow : popupRef.current;
+
+    if (popup && !popup.closed) popup.close();
     popupRef.current = null;
     setPopupTarget(null);
     setIsUndocked(false);
-    if (popup && !popup.closed) popup.close();
+    window.requestAnimationFrame(() => window.focus());
   }, []);
 
   const undockChat = useCallback(() => {
@@ -328,8 +333,9 @@ function AiPromptPanel({ ai, placement = "rail" }) {
     const height = Math.min(860, Math.max(620, window.screen.availHeight - 120));
     const left = window.screenX + window.outerWidth + 16;
     const top = window.screenY + 40;
+    const popupUrl = new URL("operator-chat.html", document.baseURI).href;
     const popup = window.open(
-      "",
+      popupUrl,
       "agent-envelope-ai-operator-chat",
       `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no`,
     );
@@ -340,34 +346,42 @@ function AiPromptPanel({ ai, placement = "rail" }) {
       return;
     }
 
-    popup.document.title = "AgentEnvelope AI Operator Chat";
-    const base = popup.document.createElement("base");
-    base.href = document.baseURI;
-    popup.document.head.replaceChildren(base);
-    document.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => {
-      popup.document.head.appendChild(node.cloneNode(true));
-    });
-
-    const root = popup.document.createElement("div");
-    root.className = "ai-chat-popout-root";
-    popup.document.body.className = "ai-chat-popout-body";
-    popup.document.body.replaceChildren(root);
-
     popupRef.current = popup;
-    setPopupTarget(root);
-    setIsUndocked(true);
-    popup.focus();
+    const mountChat = () => {
+      if (popup.closed || popupRef.current !== popup) return;
 
-    popup.addEventListener(
-      "beforeunload",
-      () => {
-        if (popupRef.current !== popup) return;
-        popupRef.current = null;
-        setPopupTarget(null);
-        setIsUndocked(false);
-      },
-      { once: true },
-    );
+      popup.document.title = "AgentEnvelope AI Operator Chat";
+      const base = popup.document.createElement("base");
+      base.href = document.baseURI;
+      const title = popup.document.createElement("title");
+      title.textContent = "AgentEnvelope AI Operator Chat";
+      popup.document.head.replaceChildren(base, title);
+      document.querySelectorAll('link[rel="stylesheet"], link[rel~="icon"], style').forEach((node) => {
+        popup.document.head.appendChild(node.cloneNode(true));
+      });
+
+      const root = popup.document.createElement("div");
+      root.className = "ai-chat-popout-root";
+      popup.document.body.className = "ai-chat-popout-body";
+      popup.document.body.replaceChildren(root);
+
+      setPopupTarget(root);
+      setIsUndocked(true);
+      popup.focus();
+
+      popup.addEventListener(
+        "beforeunload",
+        () => {
+          if (popupRef.current !== popup) return;
+          popupRef.current = null;
+          setPopupTarget(null);
+          setIsUndocked(false);
+        },
+        { once: true },
+      );
+    };
+
+    popup.addEventListener("load", mountChat, { once: true });
   }, []);
 
   useEffect(() => {

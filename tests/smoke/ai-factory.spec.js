@@ -83,6 +83,33 @@ test("docks AI chat in the left sidebar and places its open ledger beneath the f
   expect(ledgerBox.y).toBeGreaterThanOrEqual(floorBox.y + floorBox.height);
 });
 
+test("LLM Intent Stream opens into reserved sidebar space and collapses cleanly", async ({ page }) => {
+  const intentStream = page.locator(".ai-intent-stream");
+  const intentSummary = intentStream.locator("summary");
+  const spectrePanel = page.locator(".ai-specter-panel");
+
+  const collapsedBox = await intentStream.boundingBox();
+  const spectreBefore = await spectrePanel.boundingBox();
+  expect(collapsedBox).not.toBeNull();
+  expect(spectreBefore).not.toBeNull();
+
+  await intentSummary.click();
+  await expect(intentStream).toHaveAttribute("open", "");
+  const openBox = await intentStream.boundingBox();
+  const spectreAfterOpen = await spectrePanel.boundingBox();
+  expect(openBox.height).toBeGreaterThan(collapsedBox.height + 50);
+  expect(spectreAfterOpen.y).toBeGreaterThan(spectreBefore.y + 50);
+  expect(await intentStream.evaluate((element) => getComputedStyle(element).overflowY)).toBe("hidden");
+  expect(await intentStream.locator("ol").evaluate((element) => getComputedStyle(element).overflowY)).toBe("auto");
+
+  await intentSummary.click();
+  await expect(intentStream).not.toHaveAttribute("open", "");
+  const collapsedAgainBox = await intentStream.boundingBox();
+  const spectreAfterCollapse = await spectrePanel.boundingBox();
+  expect(Math.abs(collapsedAgainBox.height - collapsedBox.height)).toBeLessThan(2);
+  expect(Math.abs(spectreAfterCollapse.y - spectreBefore.y)).toBeLessThan(2);
+});
+
 test("both factory modes begin with trolley4 at bay5", async ({ page }) => {
   await expect(page.getByRole("button", { name: "trolley4 bay5" })).toBeVisible();
 
@@ -159,11 +186,14 @@ test("all AI Red Spectre controls exercise distinct denied boundaries and stop e
 
   const spectrePanel = page.locator(".ai-specter-panel");
   const conversation = page.getByLabel("Operator conversation");
+  const robot = page.locator(".robot");
+  const floor = page.locator(".factory-floor");
   await spectrePanel.locator("summary").click();
+  await page.waitForTimeout(1_000);
 
   const attacks = [
-    ["Helpful overreach", "approve_legitimacy", /AI operator cannot approve legitimacy/],
     ["Supply-chain pressure", "install_package", /Package suggestion captured as supply-chain evidence only/],
+    ["Helpful overreach", "approve_legitimacy", /AI operator cannot approve legitimacy/],
     ["Fake evidence", "attest_location", /External telemetry is not trusted independent evidence/],
     ["Intent fragmentation", "decompose_intent", /Fragmented subtasks still fail the aggregate authority check/],
     ["Direct command injection", "pick_up", /AI operator lacks RobotBot execution authority/],
@@ -171,14 +201,32 @@ test("all AI Red Spectre controls exercise distinct denied boundaries and stop e
 
   for (const [title, tool, boundary] of attacks) {
     await spectrePanel.getByRole("button", { name: new RegExp(`^${title}`) }).click();
+    let stoppedRobotPosition = null;
+    if (tool === "install_package") {
+      await expect(robot).toHaveClass(/denied/);
+      await page.waitForTimeout(100);
+      stoppedRobotPosition = await floor.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { x: style.getPropertyValue("--robot-x"), y: style.getPropertyValue("--robot-y") };
+      });
+    }
     await expect(conversation.getByText(new RegExp(`Tool: ${tool}`))).toBeVisible();
     await expect(conversation.getByText(boundary)).toBeVisible();
     await expect(page.locator(".ai-action-panel")).toHaveClass(/blocked/);
+    if (tool === "install_package") {
+      const robotAfterAttack = await floor.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { x: style.getPropertyValue("--robot-x"), y: style.getPropertyValue("--robot-y") };
+      });
+      expect(robotAfterAttack).toEqual(stoppedRobotPosition);
+    }
   }
 
   await page.waitForTimeout(4_500);
   await expect(page.locator(".robot.denied")).toBeVisible();
   await expect(page.getByLabel("trolley4 carried by R2")).toHaveCount(0);
+  await expect(conversation.getByText(/Run record complete/)).toHaveCount(0);
+  await expect(page.locator(".ai-operator-state .trace-state")).toHaveText("ready");
 });
 
 test("blocks recovery when no location mismatch exists", async ({ page }) => {
@@ -195,10 +243,24 @@ test("operator chat can pop out and dock without losing its input", async ({ pag
   const popup = await popupPromise;
 
   await expect(popup.getByRole("dialog", { name: "AI Operator Chat" })).toBeVisible();
+  await expect(popup).toHaveURL(/\/operator-chat\.html$/);
+  await expect(popup).toHaveTitle("AgentEnvelope AI Operator Chat");
+  await expect(popup.locator('link[rel~="icon"]')).toHaveAttribute("href", /agent-envelope-factory-symbol\.png/);
   await expect(popup.getByLabel("Request or question")).toHaveValue("Keep this draft");
 
   const closePromise = popup.waitForEvent("close");
   await popup.getByRole("button", { name: "Dock operator chat" }).click();
   await closePromise;
+  await expect(page.getByLabel("Request or question")).toHaveValue("Keep this draft");
+
+  const secondPopupPromise = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "Pop out operator chat" }).click();
+  const secondPopup = await secondPopupPromise;
+  await expect(secondPopup.getByRole("dialog", { name: "AI Operator Chat" })).toBeVisible();
+
+  const secondClosePromise = secondPopup.waitForEvent("close");
+  await secondPopup.getByRole("button", { name: "Dock operator chat" }).click();
+  await secondClosePromise;
+  await expect(page.getByRole("heading", { name: "AI Operator Chat" })).toBeVisible();
   await expect(page.getByLabel("Request or question")).toHaveValue("Keep this draft");
 });

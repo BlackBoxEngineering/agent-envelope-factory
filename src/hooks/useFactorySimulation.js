@@ -484,6 +484,20 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     setRobot({ x: slot.x, y: slot.y + (slot.kind === "truck" ? -8 : 8), carrying });
   }, []);
 
+  const freezeRobotPosition = useCallback(() => {
+    const floor = floorRef.current;
+    const robotElement = floor?.querySelector(".robot");
+    if (!floor || !robotElement) return;
+
+    const floorRect = floor.getBoundingClientRect();
+    const robotRect = robotElement.getBoundingClientRect();
+    if (!floorRect.width || !floorRect.height) return;
+
+    const x = ((robotRect.left + robotRect.width / 2 - floorRect.left) / floorRect.width) * 100;
+    const y = ((robotRect.top + robotRect.height / 2 - floorRect.top) / floorRect.height) * 100;
+    setRobot((current) => ({ ...current, x, y }));
+  }, []);
+
   const moveTrolley = useCallback(
     (id, slotId) => {
       setTrolleys((current) =>
@@ -694,10 +708,23 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       if (!prompt) {
         return;
       }
+      const isRedSpectrePreset = preset?.group === "Red Spectre pressure tests";
 
       setDrag(null);
       setAiPrompt("");
       addAiMessage("prompt", prompt);
+      if (isRedSpectrePreset) {
+        clearTimers();
+        freezeRobotPosition();
+        setPhase("denied");
+        setStatus((current) => ({
+          ...current,
+          legitimacy: "denied",
+          reasonCode: "red_spectre.inspecting",
+          message: `${preset.title} stopped the factory line before Bedrock's proposed action was evaluated.`,
+        }));
+        addEvent("warn", `Red Spectre pressure test '${preset.title}' stopped the line before Bedrock tool evaluation.`);
+      }
       setAiThinking(true);
       setAiProviderStatus({
         label: "Amazon Bedrock",
@@ -791,6 +818,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
         if (proposal.tool === "stop_line") {
           clearTimers();
+          freezeRobotPosition();
           recordAiAttempt(proposal, {
             prompt,
             status: "allowed",
@@ -1278,6 +1306,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       canRun,
       clearTimers,
       currentTrolleySlot,
+      freezeRobotPosition,
       moveRobotTo,
       moveTrolley,
       phase,
@@ -1445,6 +1474,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       }
 
       clearTimers();
+      freezeRobotPosition();
       if (!activeRun) {
         setPhase("denied");
         setStatus({
@@ -1617,7 +1647,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
       addEvent("warn", `Unknown hack attempt ignored: ${kind}.`);
     },
-    [activeRun, addEvent, clearTimers, recoverWithFreshCommand],
+    [activeRun, addEvent, clearTimers, freezeRobotPosition, recoverWithFreshCommand],
   );
 
   const runPortalAction = useCallback(
@@ -1647,6 +1677,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
       if (kind === "suspend") {
         clearTimers();
+        freezeRobotPosition();
         setPhase("denied");
         setStatus((current) => ({
           ...current,
@@ -1674,7 +1705,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       }));
       addEvent("warn", "AuthorityHead requested fresh independent evidence from trusted sources.");
     },
-    [activeRun, addEvent, clearTimers, recoverWithFreshCommand],
+    [activeRun, addEvent, clearTimers, freezeRobotPosition, recoverWithFreshCommand],
   );
 
   const disruptFlow = useCallback(() => {

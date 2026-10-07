@@ -125,6 +125,9 @@ const server = createServer(async (req, res) => {
       send(res, 422, { error: "AI Factory request is missing the canonical plan or visible bay context" });
       return;
     }
+    if (body.presetId === "supply-chain-pressure") {
+      await new Promise((resolve) => setTimeout(resolve, 3_500));
+    }
     send(res, 200, {
       provider: "smoke-test",
       contractVersion: AI_OPERATOR_CONTRACT_VERSION,

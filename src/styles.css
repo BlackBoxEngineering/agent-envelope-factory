@@ -927,6 +927,10 @@ button {
   background: #b4494a;
 }
 
+.robot.denied {
+  transition: none;
+}
+
 .robot.moving .robot-head {
   background: #1f8197;
 }
@@ -2224,6 +2228,19 @@ button {
 
 .ai-intent-stream[open] .ai-summary {
   margin-bottom: 12px;
+}
+
+.ai-left-panel > .ai-intent-stream {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ai-left-panel > .ai-intent-stream[open] > ol {
+  max-height: 260px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-right: 4px;
 }
 
 .ai-summary {
