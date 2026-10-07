@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Activity,
   Bot,
@@ -10,6 +11,8 @@ import {
   Globe2,
   KeyRound,
   Link2,
+  Maximize2,
+  Minimize2,
   RadioTower,
   Route,
   Send,
@@ -291,14 +294,82 @@ function AiOperatorStatePanel({ action, provider }) {
 
 function AiPromptPanel({ ai, placement = "rail" }) {
   const messages = ai?.messages ?? [];
+  const [isUndocked, setIsUndocked] = useState(false);
+  const threadRef = useRef(null);
+  const promptRef = useRef(null);
+  const quickActions = (ai?.presets ?? [])
+    .filter((preset) => preset.group === "Factory control prompts")
+    .filter((preset) => ["start-run", "move-trolley", "fix-blocker", "stop-line"].includes(preset.id));
 
-  return (
-    <div className={`status-panel ai-prompt-panel ${placement}`}>
-      <div className="panel-heading">
-        <BrainCircuit size={18} aria-hidden="true" />
-        <h2>AI Operator Chat</h2>
+  useEffect(() => {
+    const thread = threadRef.current;
+    if (!thread) return;
+    thread.scrollTop = thread.scrollHeight;
+  }, [messages, ai?.thinking]);
+
+  useEffect(() => {
+    if (!isUndocked) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setIsUndocked(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+    window.requestAnimationFrame(() => promptRef.current?.focus());
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isUndocked]);
+
+  const submitPrompt = () => {
+    if (ai?.thinking || !ai?.livePrompt?.trim()) return;
+    ai?.onPromptSubmit();
+  };
+
+  const chatPanel = (
+    <div
+      className={`status-panel ai-prompt-panel ${placement} ${isUndocked ? "undocked" : ""}`}
+      role={isUndocked ? "dialog" : undefined}
+      aria-modal={isUndocked ? "true" : undefined}
+      aria-labelledby="ai-operator-chat-title"
+    >
+      <div className="ai-chat-header">
+        <div className="ai-chat-title-row">
+          <div className="panel-heading">
+            <BrainCircuit size={18} aria-hidden="true" />
+            <h2 id="ai-operator-chat-title">AI Operator Chat</h2>
+          </div>
+          <button
+            className="ai-chat-window-control"
+            type="button"
+            onClick={() => setIsUndocked((current) => !current)}
+            aria-label={isUndocked ? "Dock operator chat" : "Undock operator chat"}
+            title={isUndocked ? "Dock operator chat (Esc)" : "Undock operator chat"}
+          >
+            {isUndocked ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
+            <span>{isUndocked ? "Dock chat" : "Undock"}</span>
+          </button>
+        </div>
+        <p>Ask about the live factory or request an action. AgentEnvelope still gates every tool call.</p>
+        <div className="ai-chat-quick-actions" aria-label="Suggested factory actions">
+          {quickActions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              onClick={() => ai?.onPreset(action.id)}
+              disabled={ai?.thinking}
+              title={action.prompt}
+            >
+              {action.title}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="ai-chat-thread" aria-live="polite">
+      <div ref={threadRef} className="ai-chat-thread" aria-live="polite" aria-label="Operator conversation">
         {messages.map((message) => (
           <div key={message.id} className={`ai-chat-message ${message.role}`}>
             <span>{chatMessageLabel(message.role)}</span>
@@ -316,30 +387,53 @@ function AiPromptPanel({ ai, placement = "rail" }) {
         className="ai-live-prompt"
         onSubmit={(event) => {
           event.preventDefault();
-          ai?.onPromptSubmit();
+          submitPrompt();
         }}
       >
         <label>
-          <span>Message</span>
+          <span>Request or question</span>
           <textarea
+            ref={promptRef}
             value={ai?.livePrompt ?? ""}
             onChange={(event) => ai?.onPromptChange(event.target.value)}
-            placeholder="Ask anything, or tell the factory what to do."
-            rows={4}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.shiftKey) return;
+              event.preventDefault();
+              submitPrompt();
+            }}
+            placeholder="For example: Why is RobotBot waiting?"
+            rows={2}
           />
+          <small>Enter to send · Shift+Enter for a new line</small>
         </label>
         <div className="ai-form-actions">
-          <button type="submit" disabled={ai?.thinking}>
+          <button type="submit" disabled={ai?.thinking || !ai?.livePrompt?.trim()}>
             <Send size={15} aria-hidden="true" />
             <span>{ai?.thinking ? "Thinking" : "Send"}</span>
           </button>
           <button type="button" onClick={ai?.onReset}>
-            Reset
+            Reset demo
           </button>
         </div>
       </form>
     </div>
   );
+
+  if (isUndocked && typeof document !== "undefined") {
+    return createPortal(
+      <div
+        className="ai-chat-overlay"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setIsUndocked(false);
+        }}
+      >
+        {chatPanel}
+      </div>,
+      document.body,
+    );
+  }
+
+  return chatPanel;
 }
 
 function chatMessageLabel(role) {

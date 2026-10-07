@@ -129,7 +129,7 @@ const AI_INITIAL_MESSAGES = [
   {
     id: "chat-000",
     role: "assistant",
-    text: "Send a query, factory command, or Red Spectre corruption attempt. I will answer in chat or request a gated factory tool.",
+    text: "Ask what is happening, or tell me to start, stop, move trolley4, change RobotBot's speed, or fix a blocker. I can propose actions; AgentEnvelope decides whether they are allowed.",
   },
 ];
 

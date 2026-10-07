@@ -2204,26 +2204,105 @@ button {
 
 .ai-prompt-panel.under-floor {
   display: grid;
-  gap: 10px;
-  align-items: start;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   padding: 14px;
-  align-content: start;
 }
 
-.ai-prompt-panel.under-floor > .panel-heading {
+.ai-chat-header {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ai-chat-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ai-chat-title-row > .panel-heading {
   margin-bottom: 0;
 }
 
-.ai-prompt-panel.under-floor > .ai-model-state {
-  margin-bottom: 0;
+.ai-chat-window-control {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--ae-cyan) 30%, #30323a);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--ae-cyan) 7%, #101116);
+  color: color-mix(in srgb, var(--ae-cyan) 76%, white);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.ai-chat-window-control:hover {
+  border-color: var(--ae-gold);
+  color: var(--ae-gold-light);
+}
+
+.ai-chat-window-control:focus-visible {
+  outline: 2px solid var(--ae-cyan);
+  outline-offset: 2px;
+}
+
+.ai-chat-header > p {
+  margin: 0;
+  color: var(--ae-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ai-chat-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-chat-quick-actions button {
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--ae-cyan) 28%, #30323a);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ae-cyan) 8%, #101116);
+  color: color-mix(in srgb, var(--ae-cyan) 76%, white);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.ai-chat-quick-actions button:hover:not(:disabled) {
+  border-color: var(--ae-gold);
+  background: color-mix(in srgb, var(--ae-gold) 12%, #101116);
+  color: var(--ae-gold-light);
+}
+
+.ai-chat-quick-actions button:disabled {
+  cursor: wait;
+  opacity: 0.5;
 }
 
 .ai-chat-thread {
   display: grid;
+  align-content: start;
   gap: 8px;
-  max-height: 205px;
-  overflow: auto;
-  padding-right: 2px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 8px 2px 2px;
+  scrollbar-gutter: stable;
 }
 
 .ai-chat-message {
@@ -2289,6 +2368,43 @@ button {
   line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.ai-chat-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(3, 5, 8, 0.76);
+  backdrop-filter: blur(6px);
+}
+
+.ai-prompt-panel.under-floor.undocked {
+  width: min(1000px, calc(100vw - 48px));
+  height: min(760px, calc(100vh - 48px));
+  max-height: none;
+  padding: 18px;
+  border-color: color-mix(in srgb, var(--ae-gold) 58%, #30323a);
+  background: color-mix(in srgb, #111821 97%, transparent);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.72), var(--ae-gold-glow);
+}
+
+.ai-prompt-panel.under-floor.undocked .ai-chat-thread {
+  padding: 4px 12px 4px 4px;
+}
+
+.ai-prompt-panel.under-floor.undocked .ai-chat-message {
+  width: fit-content;
+  max-width: min(78%, 760px);
+  padding: 12px;
+}
+
+.ai-prompt-panel.under-floor.undocked .ai-live-prompt textarea {
+  min-height: 96px;
+  max-height: 180px;
+  resize: vertical;
 }
 
 .ai-model-state,
@@ -2405,12 +2521,13 @@ button {
 
 .ai-prompt-panel.under-floor .ai-live-prompt {
   margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
+  padding-top: 10px;
 }
 
 .ai-prompt-panel.under-floor .ai-live-prompt textarea {
-  min-height: 72px;
+  min-height: 54px;
+  max-height: 96px;
+  resize: none;
 }
 
 .ai-live-prompt label {
@@ -2423,6 +2540,12 @@ button {
   font-size: 11px;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.ai-live-prompt label small {
+  color: color-mix(in srgb, var(--ae-muted) 78%, transparent);
+  font-size: 10px;
+  line-height: 1.2;
 }
 
 .ai-live-prompt textarea {
@@ -2618,6 +2741,20 @@ button {
 }
 
 @media (max-width: 640px) {
+  .ai-chat-overlay {
+    padding: 8px;
+  }
+
+  .ai-prompt-panel.under-floor.undocked {
+    width: 100%;
+    height: 100%;
+    padding: 12px;
+  }
+
+  .ai-prompt-panel.under-floor.undocked .ai-chat-message {
+    max-width: 94%;
+  }
+
   .toolbar {
     align-items: flex-start;
     flex-direction: column;
