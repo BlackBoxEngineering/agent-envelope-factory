@@ -3,7 +3,7 @@ import process from "node:process";
 
 const viteArgs = ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", ...process.argv.slice(2)];
 const children = [
-  start("bridge", process.execPath, ["scripts/ai-operator-bridge.js"]),
+  start("bridge", process.execPath, ["--watch", "scripts/ai-operator-bridge.js"]),
   start("vite", process.execPath, viteArgs),
 ];
 

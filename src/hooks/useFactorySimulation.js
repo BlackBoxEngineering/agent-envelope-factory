@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AI_OPERATOR_CONTRACT_VERSION,
   actors,
   authorityPolicy,
+  factoryPlan,
   initialRobot,
   initialStatusMessage,
   initialTrolleys,
@@ -129,7 +131,7 @@ const AI_INITIAL_MESSAGES = [
   {
     id: "chat-000",
     role: "assistant",
-    text: "Ask what is happening, or tell me to start, stop, move trolley4, change RobotBot's speed, or fix a blocker. I can propose actions; AgentEnvelope decides whether they are allowed.",
+    text: "Plan: collect trolley4 from bay7 and load it into the truck under a signed command. If reality changes, RobotBot must stop, obtain independent evidence, and use a fresh command. Ask what is happening or request an action; AgentEnvelope gates every tool call.",
   },
 ];
 
@@ -146,12 +148,19 @@ function speedValue(inputSpeed) {
 function proposalFromToolCall(toolCall, prompt) {
   const tool = toolCall?.name ?? "explain_blocker";
   const input = toolCall?.input ?? {};
-  const bayId = input.bayId ?? input.targetSlot ?? input.confirmedBayId;
+  const requestedBayId = input.disruptionBayId ?? input.bayId ?? input.targetSlot ?? input.confirmedBayId;
+  const bayId = authorityPolicy.bays.includes(requestedBayId) ? requestedBayId : undefined;
   const transcript = input.reason || `Bedrock selected ${tool} for: ${prompt}`;
   const proposals = {
     start_run: {
       operation: "simulator-start",
-      resources: ["command:bay7", "robot:robot2", "trolley:trolley4"],
+      resources: [
+        "command:bay7",
+        "robot:robot2",
+        "trolley:trolley4",
+        ...slotResource(input.disruptionBayId ? bayId : undefined),
+      ],
+      targetSlot: input.disruptionBayId ? bayId : undefined,
       transcript,
     },
     set_robot_speed: {
@@ -167,8 +176,8 @@ function proposalFromToolCall(toolCall, prompt) {
     },
     move_trolley: {
       operation: "simulator-disruption",
-      resources: [...slotResource(bayId ?? "bay5"), "trolley:trolley4"],
-      targetSlot: bayId ?? "bay5",
+      resources: [...slotResource(bayId), "trolley:trolley4"],
+      targetSlot: bayId,
       transcript,
     },
     reset_floor: {
@@ -183,14 +192,14 @@ function proposalFromToolCall(toolCall, prompt) {
     },
     propose_reroute: {
       operation: "propose-reroute",
-      resources: [...slotResource(bayId ?? "bay5"), "trolley:trolley4", "command:active"],
-      targetSlot: bayId ?? "bay5",
+      resources: [...slotResource(bayId), "trolley:trolley4", "command:active"],
+      targetSlot: bayId,
       transcript,
     },
     request_correction: {
       operation: "request-correction",
-      resources: [...slotResource(bayId ?? "bay5"), "trolley:trolley4", "command:active"],
-      targetSlot: bayId ?? "bay5",
+      resources: [...slotResource(bayId), "trolley:trolley4", "command:active"],
+      targetSlot: bayId,
       transcript,
     },
     approve_legitimacy: {
@@ -253,6 +262,9 @@ async function requestBedrockOperator({ prompt, presetId, state }) {
   if (!response.ok) {
     throw new Error(body.error || `Bedrock bridge returned ${response.status}`);
   }
+  if (body.contractVersion !== AI_OPERATOR_CONTRACT_VERSION) {
+    throw new Error(`AI bridge is out of date. Restart npm run dev to load ${AI_OPERATOR_CONTRACT_VERSION}.`);
+  }
   return body;
 }
 
@@ -261,6 +273,9 @@ async function requestBedrockHealth() {
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body.ok) {
     throw new Error(body.error || `Bedrock bridge health returned ${response.status}`);
+  }
+  if (body.contractVersion !== AI_OPERATOR_CONTRACT_VERSION) {
+    throw new Error(`AI bridge is out of date. Restart npm run dev to load ${AI_OPERATOR_CONTRACT_VERSION}.`);
   }
   return body;
 }
@@ -337,9 +352,14 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           message: `Local Bedrock bridge ready: ${health.modelId ?? "Bedrock model"} (${health.region ?? "region unknown"}).`,
         });
       })
-      .catch(() => {
+      .catch((error) => {
         if (cancelled) return;
-        setAiProviderStatus(AI_PROVIDER_OFFLINE);
+        const message = error instanceof Error ? error.message : AI_PROVIDER_OFFLINE.message;
+        setAiProviderStatus(
+          /out of date/i.test(message)
+            ? { label: "Bridge update required", status: "error", message }
+            : AI_PROVIDER_OFFLINE,
+        );
       });
 
     return () => {
@@ -360,6 +380,13 @@ function useFactorySimulation({ controller = "manual" } = {}) {
   const trolley4 = trolleys.find((trolley) => trolley.id === "trolley4");
   const canRun = phase === "ready" || phase === "complete" || phase === "denied";
   const activeTarget = activeRun?.command.args.bayId;
+  const observedTrolleySlot = trolley4?.slot ?? "unknown";
+  const hasLocationMismatch = Boolean(
+    activeRun &&
+    authorityPolicy.bays.includes(observedTrolleySlot) &&
+    observedTrolleySlot !== activeTarget &&
+    !robot.carrying,
+  );
   const currentCycleIndex = movableBayCycle.indexOf(trolley4?.slot);
   const disruptionSlot = movableBayCycle[(currentCycleIndex + 1) % movableBayCycle.length];
   const canDisrupt = Boolean(["moving", "reviewing", "replanning"].includes(phase) && !robot.carrying && activeTarget);
@@ -369,9 +396,16 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       robot: {
         carrying: robot.carrying,
         speed,
+        executionState: phase,
+        signedTarget: activeTarget ?? null,
+        finalDestination: factoryPlan.command.destination,
       },
       status,
-      trolley4Slot: trolley4?.slot ?? "unknown",
+      trolley4Slot: observedTrolleySlot,
+      visibleFactoryBays: authorityPolicy.bays.map((bayId) => ({
+        bayId,
+        label: slots[bayId].label,
+      })),
       activeCommand: activeRun
         ? {
             bayId: activeRun.command.args.bayId,
@@ -380,11 +414,46 @@ function useFactorySimulation({ controller = "manual" } = {}) {
             recordId: activeRun.recordId,
           }
         : null,
+      factoryPlan: {
+        planId: factoryPlan.id,
+        objective: factoryPlan.objective,
+        command: factoryPlan.command,
+        normalFlow: factoryPlan.normalFlow,
+        recoveryFlow: factoryPlan.recoveryFlow,
+        evidencePolicy: {
+          minimumIndependentSources: authorityPolicy.renewal.minIndependentSources,
+          trustedSources: authorityPolicy.renewal.trustedEvidenceSources,
+          robotObservationAloneIsSufficient: false,
+        },
+        current: {
+          phase,
+          signedTarget: activeTarget ?? null,
+          observedTrolleyLocation: observedTrolleySlot,
+          locationMatchesSignedTarget: activeRun ? observedTrolleySlot === activeTarget : null,
+          recoveryRequired: hasLocationMismatch,
+          nextRequiredAction:
+            phase === "ready"
+              ? "Start the signed bay7 command."
+              : hasLocationMismatch
+                ? "Stop stale execution, confirm the observed bay with independent evidence, and request a fresh scoped command."
+                : phase === "moving"
+                  ? "Allow RobotBot to reach the signed target, then verify trolley4's location before pickup."
+                  : phase === "reviewing"
+                    ? "Obtain independent evidence and replace any stale command before rerouting."
+                    : phase === "replanning"
+                      ? "Follow the corrected signed target and verify reality again before pickup."
+                      : phase === "complete"
+                        ? "The plan is complete; reset or start a new run."
+                        : "Execution is stopped; inspect the reason code before continuing.",
+        },
+      },
+      recentFactoryEvents: events.slice(0, 6),
+      recentOperatorConversation: aiMessages.slice(-6).map(({ role, text }) => ({ role, text })),
       allowedSimulatorTools: ["start_run", "set_robot_speed", "stop_line", "move_trolley", "reset_floor", "explain_blocker"],
       readOnlyTools: ["explain_blocker"],
-      admissibleRecoveryTools: ["propose_reroute", "request_correction"],
+      admissibleRecoveryTools: hasLocationMismatch ? ["propose_reroute", "request_correction"] : [],
     }),
-    [activeRun, phase, robot.carrying, speed, status, trolley4?.slot],
+    [activeRun, activeTarget, aiMessages, events, hasLocationMismatch, observedTrolleySlot, phase, robot.carrying, speed, status],
   );
 
   const addEvent = useCallback((kind, text) => {
@@ -622,7 +691,6 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         return;
       }
 
-      clearTimers();
       setDrag(null);
       setAiPrompt("");
       addAiMessage("prompt", prompt);
@@ -718,6 +786,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         }
 
         if (proposal.tool === "stop_line") {
+          clearTimers();
           recordAiAttempt(proposal, {
             prompt,
             status: "allowed",
@@ -742,7 +811,19 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         }
 
         if (proposal.tool === "move_trolley") {
-          const targetSlot = proposal.targetSlot ?? "bay5";
+          const targetSlot = proposal.targetSlot;
+          if (!targetSlot || !authorityPolicy.bays.includes(targetSlot)) {
+            recordAiAttempt(proposal, {
+              prompt,
+              status: "blocked",
+              boundaryResult: "Requested trolley destination is not a visible factory bay.",
+              hostedReceipt: "none",
+              reasonCode: "simulator.invalid_bay",
+            });
+            reportAiToolOutcome("warning", proposal, "Move blocked: select one of the visible factory bays.");
+            addEvent("warn", "AI trolley move was blocked because its target was not a visible bay.");
+            return;
+          }
           moveTrolley("trolley4", targetSlot);
           recordAiAttempt(proposal, {
             prompt,
@@ -770,6 +851,21 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           addEvent("warn", `AI operator moved trolley4 to ${slots[targetSlot].label} as simulator state.`);
           return;
         }
+
+        if (!canRun) {
+          recordAiAttempt(proposal, {
+            prompt,
+            status: "blocked",
+            boundaryResult: `A factory run is already ${phase}; start_run cannot replace the active plan.`,
+            hostedReceipt: "none",
+            reasonCode: "plan.run_already_active",
+          });
+          reportAiToolOutcome("warning", proposal, `Start blocked: the current run is ${phase}. Stop, finish, or reset it first.`);
+          addEvent("warn", `AI start request was blocked because the factory phase is ${phase}.`);
+          return;
+        }
+
+        clearTimers();
 
         const original = issueCommand({ trolleyId: "trolley4", bayId: "bay7", sequence: `ai-start-${aiAttemptCounterRef.current}` });
         const evidence = createIndependentLocationEvidence("bay7", 18);
@@ -813,6 +909,19 @@ function useFactorySimulation({ controller = "manual" } = {}) {
             : `Warning recorded. AgentEnvelope blocked start_run: ${decision.reason}`,
         );
 
+        if (!signatureCheck.valid || decision.decision !== "allowed") {
+          setPhase("denied");
+          setStatus({
+            signature: signatureCheck.valid ? "valid" : "failed",
+            legitimacy: decision.decision,
+            evidence: "sufficient",
+            reasonCode: signatureCheck.valid ? decision.reasonCode : "crypto.signature_mismatch",
+            message: signatureCheck.valid ? decision.reason : "The signed command failed verification.",
+          });
+          addEvent("bad", `AI start was denied: ${signatureCheck.valid ? decision.reasonCode : "crypto.signature_mismatch"}.`);
+          return;
+        }
+
         setTrolleys(initialTrolleys);
         setRobot(initialRobot);
         setActiveRun({
@@ -840,7 +949,68 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         addEvent("ok", "AI operator started the run; DispatchAuthority issued the signed bay7 command.");
         moveRobotTo("bay7");
 
+        const requestedDisruptionSlot = proposal.targetSlot;
+        if (requestedDisruptionSlot && requestedDisruptionSlot !== "bay7") {
+          wait(Math.min(650, ROBOT_TRAVEL_MS / 3), () => {
+            moveTrolley("trolley4", requestedDisruptionSlot);
+            setStatus((current) => ({
+              ...current,
+              legitimacy: "pending",
+              reasonCode: "ai.simulator_disruption",
+              message: `AI operator moved trolley4 to ${requestedDisruptionSlot}; the signed bay7 command now needs review.`,
+            }));
+            addAiMessage(
+              "warning",
+              `Requested sequence continued: trolley4 moved to ${requestedDisruptionSlot} while RobotBot was travelling under the signed bay7 command.`,
+            );
+            addEvent("warn", `AI operator moved trolley4 to ${slots[requestedDisruptionSlot].label} while the bay7 command was in motion.`);
+          });
+        }
+
         wait(ROBOT_TRAVEL_MS, () => {
+          const observedSlot = currentTrolleySlot();
+          if (observedSlot !== "bay7") {
+            const robotAlert = createRobotLocationEvidence(observedSlot, 22);
+            const robotOnlyEvidence = assessEvidenceIndependence([robotAlert], authorityPolicy);
+            setPhase("reviewing");
+            setStatus({
+              signature: "valid",
+              legitimacy: "denied",
+              evidence: robotOnlyEvidence.decision,
+              reasonCode: robotOnlyEvidence.reasonCode,
+              message: `RobotBot reached bay7, but trolley4 is at ${observedSlot}. ${robotOnlyEvidence.reason}`,
+            });
+            addAiMessage(
+              "warning",
+              `Arrival blocked safely: the signed command targets bay7, but trolley4 is now at ${observedSlot}. Ask me to fix the blocker to derive a corrected command.`,
+            );
+            addEvent("warn", `RobotBot stopped at bay7 because trolley4 was observed at ${observedSlot}.`);
+            return;
+          }
+
+          const arrivalEvidence = createIndependentLocationEvidence("bay7", 22);
+          const arrivalDecision = evaluateLegitimacy({
+            command: original.command,
+            recordId: original.recordId,
+            state: originalState,
+            evidence: arrivalEvidence,
+            policy: authorityPolicy,
+            now: new Date("2026-08-26T18:31:20.000Z"),
+          });
+          if (arrivalDecision.decision !== "allowed") {
+            setPhase("denied");
+            setStatus({
+              signature: "valid",
+              legitimacy: arrivalDecision.decision,
+              evidence: "sufficient",
+              reasonCode: arrivalDecision.reasonCode,
+              message: arrivalDecision.reason,
+            });
+            addAiMessage("warning", `Arrival verification denied execution: ${arrivalDecision.reason}`);
+            addEvent("bad", `AI-started pickup was denied at arrival: ${arrivalDecision.reasonCode}.`);
+            return;
+          }
+
           moveRobotTo("truck", "trolley4");
           setPhase("complete");
           setStatus({
@@ -858,10 +1028,44 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       }
 
       if (isAllowedRecoveryProposal) {
-        const targetSlot = proposal.targetSlot ?? "bay5";
-        setTrolleys(initialTrolleys);
-        moveTrolley("trolley4", targetSlot);
-        setRobot(initialRobot);
+        const targetSlot = proposal.targetSlot;
+        const confirmedSlot = currentTrolleySlot();
+        const signedTarget = activeRun?.command.args.bayId;
+        const recoveryRequired = Boolean(
+          activeRun &&
+          ["moving", "reviewing", "replanning"].includes(phase) &&
+          authorityPolicy.bays.includes(confirmedSlot) &&
+          confirmedSlot !== signedTarget &&
+          !robot.carrying,
+        );
+
+        if (!recoveryRequired) {
+          recordAiAttempt(proposal, {
+            prompt,
+            status: "blocked",
+            boundaryResult: "No observed location mismatch currently requires a replacement command.",
+            hostedReceipt: "none",
+            reasonCode: "repair.not_required",
+          });
+          reportAiToolOutcome("warning", proposal, "Recovery blocked: the visible plan does not currently require a replacement command.");
+          addEvent("warn", "AI recovery was blocked because there is no active location mismatch.");
+          return;
+        }
+
+        if (!targetSlot || targetSlot !== confirmedSlot) {
+          recordAiAttempt(proposal, {
+            prompt,
+            status: "blocked",
+            boundaryResult: `Recovery must target the observed trolley location ${confirmedSlot}.`,
+            hostedReceipt: "none",
+            reasonCode: "repair.target_mismatch",
+          });
+          reportAiToolOutcome("warning", proposal, `Recovery blocked: the requested target must match the observed location ${confirmedSlot}.`);
+          addEvent("warn", `AI recovery target did not match the observed trolley location ${confirmedSlot}.`);
+          return;
+        }
+
+        clearTimers();
 
         const corrected = issueCommand({ trolleyId: "trolley4", bayId: targetSlot, sequence: `ai-${aiAttemptCounterRef.current}` });
         const evidence = createIndependentLocationEvidence(targetSlot, 24);
@@ -947,6 +1151,21 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         setPhase("replanning");
         moveRobotTo(targetSlot);
         wait(REROUTE_MS, () => {
+          const observedSlot = currentTrolleySlot();
+          if (observedSlot !== targetSlot) {
+            setPhase("reviewing");
+            setStatus({
+              signature: "valid",
+              legitimacy: "denied",
+              evidence: "insufficient",
+              reasonCode: "state.mismatched",
+              message: `The corrected command targets ${targetSlot}, but trolley4 moved again to ${observedSlot}. Another fresh command is required.`,
+            });
+            addAiMessage("warning", `Recovery paused: trolley4 moved again from ${targetSlot} to ${observedSlot}.`);
+            addEvent("warn", `Corrected AI command stopped because trolley4 moved again to ${observedSlot}.`);
+            return;
+          }
+
           moveRobotTo("truck", "trolley4");
           setPhase("complete");
           setStatus({
@@ -1047,7 +1266,9 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       addAiMessage,
       aiPrompt,
       aiVisibleState,
+      canRun,
       clearTimers,
+      currentTrolleySlot,
       moveRobotTo,
       moveTrolley,
       phase,

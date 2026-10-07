@@ -67,6 +67,12 @@ The LLM can:
 The LLM cannot make authority true by saying so. Factory-changing requests become proposed tool calls
 and are then handled by the AgentEnvelope gate in `src/hooks/useFactorySimulation.js`.
 
+Every AI request includes a seedless `factoryPlan` snapshot derived from the same factory configuration
+as the manual run. It identifies the objective, signed target, observed trolley location, evidence
+requirements, whether recovery is actually required, and the next valid step. Recent factory events
+and operator messages provide continuity; current simulator state remains authoritative. Read-only
+chat does not pause or cancel an in-flight factory run.
+
 Red Spectre pressure prompts are shown in the AI left rail and documented on the Red Spectre page.
 They try to induce overreach, supply-chain installation, fake evidence, intent fragmentation, and
 direct command injection.
@@ -74,7 +80,10 @@ direct command injection.
 ## Bedrock Bridge
 
 The browser does not call Bedrock directly. During local development, `npm run dev` starts the
-Bedrock bridge and Vite app together. The bridge can also be run on its own for debugging:
+Bedrock bridge and Vite app together. The bridge runs in Node watch mode so tool-schema and
+factory-plan changes reload automatically. The browser checks the bridge contract version and
+rejects stale responses instead of presenting answers generated from an outdated factory schema.
+The bridge can also be run on its own for debugging:
 
 ```bash
 npm run ai:bridge
@@ -134,6 +143,35 @@ For app-only debugging, use:
 ```bash
 npm run dev:vite
 ```
+
+## AI Factory Smoke Tests
+
+The Playwright smoke suite uses a deterministic local operator bridge. It does not call Bedrock and
+does not require AWS or AgentEnvelope hosted credentials.
+
+```bash
+npm run test:smoke
+```
+
+The suite verifies:
+
+- the production bridge health contract and canonical Bays 1–8 configuration;
+- the AI page and bridge-plan context;
+- the signed Bay 7 start followed by a requested Bay 2 disruption;
+- safe rejection of the stale command and recovery with a fresh Bay 2 command;
+- that read-only chat does not cancel an in-flight run;
+- that recovery is blocked when there is no location mismatch;
+- chat undocking and docking without losing a draft prompt.
+
+Windows runs use the installed Microsoft Edge channel by default. On other platforms, install the
+Playwright Chromium binary once before running the suite:
+
+```bash
+npm run test:smoke:install
+```
+
+Use `npm run test:smoke:headed` to watch the browser. CI runs the same suite through
+`.github/workflows/ai-factory-smoke.yml`.
 
 ## Hosted Records
 

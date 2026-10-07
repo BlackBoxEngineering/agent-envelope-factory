@@ -10,7 +10,10 @@
     "dev": "node scripts/dev.js",
     "dev:vite": "vite --host 127.0.0.1",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "test:smoke": "playwright test",
+    "test:smoke:headed": "playwright test --headed",
+    "test:smoke:install": "playwright install chromium"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1128.0",
@@ -20,5 +23,8 @@
     "react": "latest",
     "react-dom": "latest",
     "vite": "latest"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
   }
 }

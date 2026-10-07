@@ -1,7 +1,8 @@
 node_modules/
 dist/
-.vite/
 .env
-.env.*
-!.env.example
-npm-debug.log*
+.env.local
+.env.*.local
+test-results/
+playwright-report/
+blob-report/
