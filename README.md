@@ -91,7 +91,8 @@ chat does not pause or cancel an in-flight factory run.
 After either operator starts a run, a location mismatch is handled by the shared factory plan rather
 than requiring another operator instruction. RobotBot stops under the stale command, Planner Bot uses
 fresh independent evidence, Dispatch Authority issues a new scoped command, Governance evaluates it,
-and execution resumes. The LLM cannot mint or approve that recovery authority.
+and execution resumes. If trolley4 moves again, the same governed recovery loop repeats until RobotBot
+reaches its current location. The LLM cannot mint or approve that recovery authority.
 
 Use `Pop out` in the operator chat header to open the live conversation in a separate browser window
 that can be moved to another display. The draft and conversation stay connected to the factory page;

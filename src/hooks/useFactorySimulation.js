@@ -297,6 +297,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
   const floorRef = useRef(null);
   const timersRef = useRef([]);
   const plannerRecoveryRef = useRef(null);
+  const plannerRecoveryCounterRef = useRef(1);
   const latestTrolleysRef = useRef(initialTrolleys);
   const hostedInFlightRef = useRef(new Set());
   const hostedResultsRef = useRef(new Map());
@@ -529,6 +530,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     });
     setAiPrompt("");
     aiChatCounterRef.current = 1;
+    plannerRecoveryCounterRef.current = 1;
     setAiMessages(AI_INITIAL_MESSAGES);
     setAiAttempts([]);
     setAiProposedAction(null);
@@ -1168,6 +1170,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
             });
             addAiMessage("warning", `Recovery paused: trolley4 moved again from ${targetSlot} to ${observedSlot}.`);
             addEvent("warn", `Corrected AI command stopped because trolley4 moved again to ${observedSlot}.`);
+            wait(REVIEW_MS, () => plannerRecoveryRef.current?.("PlannerBot"));
             return;
           }
 
@@ -1306,8 +1309,14 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       }
 
       clearTimers();
-      const corrected = issueCommand({ trolleyId: "trolley4", bayId: confirmedSlot, sequence: "v9" });
-      const evidence = createIndependentLocationEvidence(confirmedSlot, 20);
+      const recoveryNumber = plannerRecoveryCounterRef.current;
+      plannerRecoveryCounterRef.current += 1;
+      const corrected = issueCommand({
+        trolleyId: "trolley4",
+        bayId: confirmedSlot,
+        sequence: `planner-recovery-${recoveryNumber}`,
+      });
+      const evidence = createIndependentLocationEvidence(confirmedSlot, 20 + recoveryNumber);
       const correctedState = createLegitimacyState({
         command: corrected.command,
         recordId: corrected.recordId,
@@ -1377,6 +1386,28 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       setPhase("replanning");
       moveRobotTo(confirmedSlot);
       wait(REROUTE_MS, () => {
+        const observedSlot = currentTrolleySlot();
+        if (observedSlot !== confirmedSlot) {
+          const robotAlert = createRobotLocationEvidence(observedSlot, 30 + recoveryNumber);
+          const robotOnlyEvidence = assessEvidenceIndependence([robotAlert], authorityPolicy);
+          setPhase("reviewing");
+          setStatus({
+            signature: "valid",
+            legitimacy: "denied",
+            evidence: robotOnlyEvidence.decision,
+            reasonCode: robotOnlyEvidence.reasonCode,
+            message: `RobotBot reached ${confirmedSlot}, but trolley4 moved again to ${observedSlot}. ${robotOnlyEvidence.reason}`,
+          });
+          addAiMessage(
+            "warning",
+            `Recovery arrival blocked safely: the fresh command targets ${confirmedSlot}, but trolley4 moved again to ${observedSlot}. PlannerBot will re-observe reality and derive another scoped command.`,
+          );
+          addEvent("warn", `RobotBot stopped at ${confirmedSlot} because trolley4 moved again to ${observedSlot}.`);
+          addEvent("info", "PlannerBot restarted recovery from the latest independently observed location.");
+          wait(REVIEW_MS, () => plannerRecoveryRef.current?.("PlannerBot"));
+          return;
+        }
+
         moveRobotTo("truck", "trolley4");
         setPhase("complete");
         setStatus({

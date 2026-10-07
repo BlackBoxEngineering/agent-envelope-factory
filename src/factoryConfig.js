@@ -8,7 +8,7 @@ const warehouseFeedSeed = hexToBytes(`0x${"44".repeat(32)}`);
 const dockControllerSeed = hexToBytes(`0x${"45".repeat(32)}`);
 const governanceSeed = hexToBytes(`0x${"46".repeat(32)}`);
 const llmOperatorSeed = hexToBytes(`0x${"47".repeat(32)}`);
-const AI_OPERATOR_CONTRACT_VERSION = "factory-plan-v5";
+const AI_OPERATOR_CONTRACT_VERSION = "factory-plan-v6";
 
 const actors = {
   DispatchAuthority: {

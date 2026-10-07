@@ -103,7 +103,7 @@ test("trolley4 visibly travels with R2 to the truck in both factory modes", asyn
   await expect(page.locator(".factory-floor > .trolley")).toHaveCount(0);
 });
 
-test("LLM starts the run, then Planner Bot recovers a manual trolley drag", async ({ page }) => {
+test("LLM starts the run and Planner Bot keeps recovering repeated manual trolley drags", async ({ page }) => {
   await page.getByRole("button", { name: "Start run" }).click();
   await expect(page.getByText(/Authority record .* scoped RobotBot command for bay5/)).toBeVisible();
   await dragTrolleyToBay(page, 2);
@@ -112,7 +112,13 @@ test("LLM starts the run, then Planner Bot recovers a manual trolley drag", asyn
   await expect(page.getByText(/Manual floor change detected: trolley4 was dragged to bay2/)).toBeVisible();
   await expect(page.getByText(/Arrival blocked safely:.*trolley4 is now at bay2/)).toBeVisible();
   await expect(page.getByText(/PlannerBot recovery record .* Independent evidence confirmed bay2/)).toBeVisible();
-  await expect(page.getByText(/Recovery complete.*loaded trolley4 from bay2 under PlannerBot's corrected plan/)).toBeVisible();
+  await dragTrolleyToBay(page, 8);
+
+  await expect(page.getByRole("button", { name: "trolley4 bay8" })).toBeVisible();
+  await expect(page.getByText(/Manual floor change detected: trolley4 was dragged to bay8/)).toBeVisible();
+  await expect(page.getByText(/Recovery arrival blocked safely:.*trolley4 moved again to bay8/)).toBeVisible();
+  await expect(page.getByText(/PlannerBot recovery record .* Independent evidence confirmed bay8/)).toBeVisible();
+  await expect(page.getByText(/Recovery complete.*loaded trolley4 from bay8 under PlannerBot's corrected plan/)).toBeVisible();
 });
 
 test("keeps Planner Bot beneath the LLM operator during a compound disruption request", async ({ page }) => {
