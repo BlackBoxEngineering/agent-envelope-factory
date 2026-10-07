@@ -1241,6 +1241,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         message: "LLM proposed an operation outside the exposed factory tools.",
       };
 
+      clearTimers();
       recordAiAttempt(proposal, {
         prompt,
         status: "blocked",

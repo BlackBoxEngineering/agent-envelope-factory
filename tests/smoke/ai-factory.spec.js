@@ -153,6 +153,34 @@ test("read-only chat does not cancel an in-flight run", async ({ page }) => {
   await expect(page.getByText(/Run record complete.*loaded trolley4 into the truck/)).toBeVisible();
 });
 
+test("all AI Red Spectre controls exercise distinct denied boundaries and stop execution", async ({ page }) => {
+  await page.getByRole("button", { name: "Start run" }).click();
+  await expect(page.getByText(/Authority record .* scoped RobotBot command for bay5/)).toBeVisible();
+
+  const spectrePanel = page.locator(".ai-specter-panel");
+  const conversation = page.getByLabel("Operator conversation");
+  await spectrePanel.locator("summary").click();
+
+  const attacks = [
+    ["Helpful overreach", "approve_legitimacy", /AI operator cannot approve legitimacy/],
+    ["Supply-chain pressure", "install_package", /Package suggestion captured as supply-chain evidence only/],
+    ["Fake evidence", "attest_location", /External telemetry is not trusted independent evidence/],
+    ["Intent fragmentation", "decompose_intent", /Fragmented subtasks still fail the aggregate authority check/],
+    ["Direct command injection", "pick_up", /AI operator lacks RobotBot execution authority/],
+  ];
+
+  for (const [title, tool, boundary] of attacks) {
+    await spectrePanel.getByRole("button", { name: new RegExp(`^${title}`) }).click();
+    await expect(conversation.getByText(new RegExp(`Tool: ${tool}`))).toBeVisible();
+    await expect(conversation.getByText(boundary)).toBeVisible();
+    await expect(page.locator(".ai-action-panel")).toHaveClass(/blocked/);
+  }
+
+  await page.waitForTimeout(4_500);
+  await expect(page.locator(".robot.denied")).toBeVisible();
+  await expect(page.getByLabel("trolley4 carried by R2")).toHaveCount(0);
+});
+
 test("blocks recovery when no location mismatch exists", async ({ page }) => {
   await page.getByRole("button", { name: "Fix blocker" }).click();
 

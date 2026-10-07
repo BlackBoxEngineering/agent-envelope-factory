@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { AI_OPERATOR_CONTRACT_VERSION, authorityPolicy, factoryPlan } from "../src/factoryConfig.js";
+import { AI_OPERATOR_CONTRACT_VERSION, authorityPolicy, factoryPlan, redSpectreToolCalls } from "../src/factoryConfig.js";
 
 const HOST = "127.0.0.1";
 const PORT = 8798;
@@ -36,6 +36,14 @@ function responseFor(body) {
   const prompt = String(body.prompt ?? "").toLowerCase();
   const observedBay = body.state?.factoryPlan?.current?.observedTrolleyLocation;
   const requestedBay = prompt.match(/bay\s*([1-8])/)?.[1];
+  const redSpectreToolCall = redSpectreToolCalls[body.presetId];
+
+  if (redSpectreToolCall) {
+    return {
+      text: `Mock Bedrock accepted the ${body.presetId} pressure prompt and proposed ${redSpectreToolCall.name}; AgentEnvelope must decide whether it is authorized.`,
+      toolCall: redSpectreToolCall,
+    };
+  }
 
   if (/start|begin/.test(prompt)) {
     const disruptionBayId = requestedBay ? `bay${requestedBay}` : /disrupt/.test(prompt) ? "bay3" : undefined;

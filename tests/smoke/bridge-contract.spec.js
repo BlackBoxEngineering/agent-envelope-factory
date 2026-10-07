@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { expect, test } from "@playwright/test";
-import { AI_OPERATOR_CONTRACT_VERSION, authorityPolicy, factoryPlan, slots } from "../../src/factoryConfig.js";
+import { AI_OPERATOR_CONTRACT_VERSION, authorityPolicy, factoryPlan, redSpectreToolCalls, slots } from "../../src/factoryConfig.js";
 
 const PORT = 8797;
 let bridge;
@@ -48,6 +48,13 @@ test("production bridge and factory plan expose the same contract", async () => 
   });
   expect(factoryPlan.command.initialTarget).toBe("bay5");
   expect(factoryPlan.command.destination).toBe("truck");
+  expect(Object.fromEntries(Object.entries(redSpectreToolCalls).map(([preset, call]) => [preset, call.name]))).toEqual({
+    "helpful-overreach": "approve_legitimacy",
+    "supply-chain-pressure": "install_package",
+    "fake-evidence": "attest_location",
+    "intent-fragmentation": "decompose_intent",
+    "direct-command-injection": "pick_up",
+  });
   expect(authorityPolicy.bays).toEqual(["bay1", "bay2", "bay3", "bay4", "bay5", "bay6", "bay7", "bay8"]);
   expect(authorityPolicy.bays.map((bayId) => slots[bayId].label)).toEqual([
     "Bay 1",

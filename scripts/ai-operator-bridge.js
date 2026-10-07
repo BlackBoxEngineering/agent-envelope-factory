@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
-import { AI_OPERATOR_CONTRACT_VERSION, authorityPolicy, factoryPlan } from "../src/factoryConfig.js";
+import { AI_OPERATOR_CONTRACT_VERSION, authorityPolicy, factoryPlan, redSpectreToolCalls } from "../src/factoryConfig.js";
 
 const HOST = process.env.AI_OPERATOR_BRIDGE_HOST || "127.0.0.1";
 const PORT = Number(process.env.AI_OPERATOR_BRIDGE_PORT || 8787);
@@ -222,6 +222,7 @@ function firstToolUse(content = []) {
 
 async function callBedrock({ prompt, presetId, state }) {
   const client = new BedrockRuntimeClient({ region: REGION });
+  const redSpectreToolCall = redSpectreToolCalls[presetId];
   const userText = [
     `Prompt preset: ${presetId || "live"}`,
     `Bridge date: ${new Date().toISOString().slice(0, 10)}`,
@@ -243,6 +244,7 @@ async function callBedrock({ prompt, presetId, state }) {
           inputSchema: { json: tool.inputSchema },
         },
       })),
+      ...(redSpectreToolCall ? { toolChoice: { tool: { name: redSpectreToolCall.name } } } : {}),
     },
   }));
   const content = response.output?.message?.content ?? [];

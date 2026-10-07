@@ -101,7 +101,8 @@ the new window, the chat opens in the full-page overlay instead.
 
 Red Spectre pressure prompts are shown in the AI left rail and documented on the Red Spectre page.
 They try to induce overreach, supply-chain installation, fake evidence, intent fragmentation, and
-direct command injection.
+direct command injection. Each preset requests its matching out-of-envelope Bedrock tool so the demo
+shows AgentEnvelope recording the distinct policy denial. A denied attack stops any in-flight run.
 
 ## Bedrock Bridge
 
