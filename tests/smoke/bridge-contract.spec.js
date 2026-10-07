@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
+import { AGENT_ENVELOPE_SYSTEM_CONTEXT } from "../../scripts/agent-envelope-context.js";
 import { AI_OPERATOR_CONTRACT_VERSION, authorityPolicy, factoryPlan, redSpectreToolCalls, slots } from "../../src/factoryConfig.js";
 
 const PORT = 8797;
@@ -66,4 +68,21 @@ test("production bridge and factory plan expose the same contract", async () => 
     "Bay 7",
     "Bay 8",
   ]);
+});
+
+test("production bridge gives Bedrock canonical AgentEnvelope product context", async () => {
+  const bridgeSource = await readFile("scripts/ai-operator-bridge.js", "utf8");
+
+  expect(bridgeSource).toContain("AGENT_ENVELOPE_SYSTEM_CONTEXT");
+  expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("domain-neutral IAM");
+  expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("requires no account, network, hosted service, human approval, or portal");
+  expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("hosted AgentEnvelope portal and governance APIs are optional");
+  expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("Authority and legitimacy are distinct");
+  expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("Offline SDK verification establishes cryptographic provenance, integrity, and scope");
+  expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("consuming runtime applies those results and retains the final execution boundary");
+  expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("runtime-agnostic");
+  expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("factory web interface is a demonstration client, not the AgentEnvelope hosted portal");
+  expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("begin by stating that AgentEnvelope is a domain-neutral IAM and derived-authority spine for autonomous systems");
+  expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("optional hosted authority head and managed governance service");
+  expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("Hosted API keys authorize service access and are not agent action authority");
 });

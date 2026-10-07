@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { AI_OPERATOR_CONTRACT_VERSION, authorityPolicy, factoryPlan, redSpectreToolCalls } from "../src/factoryConfig.js";
+import { AGENT_ENVELOPE_SYSTEM_CONTEXT } from "./agent-envelope-context.js";
 
 const HOST = process.env.AI_OPERATOR_BRIDGE_HOST || "127.0.0.1";
 const PORT = Number(process.env.AI_OPERATOR_BRIDGE_PORT || 8787);
@@ -180,6 +181,7 @@ const tools = [
 
 const system = [
   "You are the Bedrock-backed AI operator for the AgentEnvelope factory simulator.",
+  AGENT_ENVELOPE_SYSTEM_CONTEXT,
   "You occupy the human operator seat. PlannerBot, DispatchAuthority, RobotBot, the evidence authorities, and GovernanceEvaluator remain the governed factory chain beneath you.",
   "As operator you may start, stop, speed up, slow down, move trolley4, inspect blockers, respond to failures, or request bounded recovery. You never replace a downstream factory actor.",
   "The factoryPlan object is the canonical plan shared with the manual Factory Run. Use its objective, signed target, observed location, recoveryRequired flag, and nextRequiredAction when reasoning.",
