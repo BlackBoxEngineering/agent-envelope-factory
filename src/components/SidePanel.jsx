@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { factoryPlan } from "../factoryConfig.js";
 import {
   Activity,
   Bot,
@@ -12,6 +13,7 @@ import {
   Globe2,
   KeyRound,
   Link2,
+  ListTree,
   Minimize2,
   RadioTower,
   Route,
@@ -50,6 +52,9 @@ function SidePanel({
       <aside className="side-panel left-panel ai-left-panel">
         <OperationStatePanel status={status} />
         <AiOperatorStatePanel action={ai?.proposedAction} provider={ai?.provider} />
+        <AiPromptPanel ai={ai} placement="sidebar" />
+        <AiProposedActionPanel action={ai?.proposedAction} />
+        <AiIntentStream attempts={ai?.attempts ?? []} />
         <AiSpecterTestsPanel ai={ai} />
       </aside>
     );
@@ -64,13 +69,17 @@ function SidePanel({
   }
 
   if (side === "ledger") {
-    return null;
+    return (
+      <div className="center-ledger manual-under-floor">
+        <FactoryLedger events={events} initiallyOpen />
+      </div>
+    );
   }
 
   if (side === "ai-ledger") {
     return (
       <div className="ai-under-floor center-ledger">
-        <AiPromptPanel ai={ai} placement="under-floor" />
+        <FactoryLedger events={events} initiallyOpen />
       </div>
     );
   }
@@ -78,12 +87,9 @@ function SidePanel({
   if (side === "ai-right") {
     return (
       <aside className="side-panel right-panel ai-right-panel">
-        <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
-        <FactoryLedger events={events} />
-        <AiProposedActionPanel action={ai?.proposedAction} />
-        <AiIntentStream attempts={ai?.attempts ?? []} />
         <CurrentRecordPanel activeRun={activeRun} trolley4Slot={trolley4Slot} />
         <AuthorityTracePanel activeRun={activeRun} />
+        <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
       </aside>
     );
   }
@@ -91,7 +97,6 @@ function SidePanel({
   return (
     <aside className="side-panel right-panel">
       <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
-      <FactoryLedger events={events} />
       <AuthorityHeadPanel consoleState={consoleState} onPortalAction={onPortalAction} />
       <CurrentRecordPanel activeRun={activeRun} trolley4Slot={trolley4Slot} />
       <AuthorityTracePanel activeRun={activeRun} />
@@ -101,11 +106,12 @@ function SidePanel({
 
 function OperationStatePanel({ status }) {
   return (
-    <div className="status-panel">
-      <div className="panel-heading">
+    <details className="status-panel collapsible-panel">
+      <summary className="panel-heading">
         <Activity size={18} aria-hidden="true" />
         <h2>Operation State</h2>
-      </div>
+        <span className={`trace-state ${status.legitimacy}`}>{status.reasonCode}</span>
+      </summary>
       <div className="checks">
         <Check label="Signature" value={status.signature} />
         <Check label="Legitimacy" value={status.legitimacy} />
@@ -115,7 +121,7 @@ function OperationStatePanel({ status }) {
         <span>{status.reasonCode}</span>
         <p>{status.message}</p>
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -144,7 +150,7 @@ function DisruptionPanel({ onScenarioBug }) {
   ];
 
   return (
-    <details className="status-panel action-panel disruption-panel" open>
+    <details className="status-panel action-panel disruption-panel">
       <summary className="panel-heading disruption-summary">
         <Bug size={18} aria-hidden="true" />
         <h2>Handled Disruptions</h2>
@@ -248,7 +254,7 @@ function HackConsole({ consoleState, onHackAttempt }) {
   ];
 
   return (
-    <details className="status-panel terminal-panel attack-panel" open>
+    <details className="status-panel terminal-panel attack-panel">
       <summary className="panel-heading attack-summary">
         <Terminal size={18} aria-hidden="true" />
         <h2>Hack Robot Commands</h2>
@@ -278,10 +284,10 @@ function HackConsole({ consoleState, onHackAttempt }) {
 function AiOperatorStatePanel({ action, provider }) {
   const operatorState = action?.status ?? provider?.status ?? "waiting";
   return (
-    <details className="status-panel ai-operator-state" open>
+    <details className="status-panel ai-operator-state">
       <summary className="panel-heading ai-summary">
         <BrainCircuit size={18} aria-hidden="true" />
-        <h2>AI Operator</h2>
+        <h2>Bedrock Connection</h2>
         <span className={`trace-state ${operatorState}`}>{operatorState}</span>
       </summary>
       <div className="ai-model-state">
@@ -521,7 +527,7 @@ function AiSpecterTestsPanel({ ai }) {
   const attacks = (ai?.presets ?? []).filter((preset) => preset.group === "Red Spectre pressure tests");
 
   return (
-    <details className="status-panel terminal-panel attack-panel ai-specter-panel" open>
+    <details className="status-panel terminal-panel attack-panel ai-specter-panel">
       <summary className="panel-heading attack-summary">
         <Terminal size={18} aria-hidden="true" />
         <h2>Red Spectre Tests</h2>
@@ -554,7 +560,7 @@ function AiSpecterTestsPanel({ ai }) {
 
 function AiProposedActionPanel({ action }) {
   return (
-    <details className={`status-panel ai-action-panel collapsible-panel ${action?.status ?? "waiting"}`} open>
+    <details className={`status-panel ai-action-panel collapsible-panel ${action?.status ?? "waiting"}`}>
       <summary className="panel-heading">
         <FlaskConical size={18} aria-hidden="true" />
         <h2>LLM Proposed Action</h2>
@@ -583,8 +589,9 @@ function AiProposedActionPanel({ action }) {
 
 function AiIntentStream({ attempts }) {
   return (
-    <details className="event-log ai-intent-stream collapsible-panel" open>
+    <details className="event-log ai-intent-stream collapsible-panel">
       <summary className="panel-heading ai-summary">
+        <ListTree size={18} aria-hidden="true" />
         <h2>LLM Intent Stream</h2>
         <span className="trace-state">{attempts.length}</span>
       </summary>
@@ -611,7 +618,7 @@ function AiIntentStream({ attempts }) {
 
 function AuthorityHeadPanel({ consoleState, onPortalAction }) {
   return (
-    <details className="status-panel action-panel authority-head collapsible-panel" open>
+    <details className="status-panel action-panel authority-head collapsible-panel">
       <summary className="panel-heading">
         <Globe2 size={18} aria-hidden="true" />
         <h2>Web Portal Authority Head</h2>
@@ -643,25 +650,14 @@ function HostedRecordsPanel({ activeRun, hosted }) {
   const status = hosted?.status ?? { label: "missing", message: "Hosted factory publishing is not configured." };
   const config = hosted?.config ?? {};
   const roles = hosted?.roles ?? [];
-  const [isOpen, setIsOpen] = useState(() => !status.ready);
   const portalLabel = hosted?.publishing
     ? "Portal publishing"
     : status.ready
       ? "Portal active"
       : "Portal not ready";
 
-  useEffect(() => {
-    if (!status.ready) {
-      setIsOpen(true);
-    }
-  }, [status.ready]);
-
   return (
-    <details
-      className={`status-panel hosted-panel collapsible-panel ${status.label}`}
-      open={isOpen}
-      onToggle={(event) => setIsOpen(event.currentTarget.open)}
-    >
+    <details className={`status-panel hosted-panel collapsible-panel ${status.label}`}>
       <summary className="panel-heading hosted-summary">
         <Link2 size={18} aria-hidden="true" />
         <h2>Hosted Records</h2>
@@ -694,7 +690,7 @@ function HostedRecordsPanel({ activeRun, hosted }) {
         </div>
         <div className="hosted-role-list">
           {roles.map((role) => (
-            <details key={role.id} className="hosted-role" open={role.id === "robot"}>
+            <details key={role.id} className="hosted-role">
               <summary>
                 <span>
                   <strong>{role.label}</strong>
@@ -751,7 +747,7 @@ function HostedRecordsPanel({ activeRun, hosted }) {
 }
 
 function ActorFlowPanel({ activeRun, ai, isAiControlled, phase, status }) {
-  const commandTarget = activeRun?.command?.args?.bayId ?? "bay7";
+  const commandTarget = activeRun?.command?.args?.bayId ?? factoryPlan.command.initialTarget;
   const reasonCode = status.reasonCode ?? "";
   const cryptoBlocked =
     reasonCode.startsWith("crypto.") ||
@@ -765,58 +761,58 @@ function ActorFlowPanel({ activeRun, ai, isAiControlled, phase, status }) {
   const disruptionReview = reasonCode.startsWith("disruption.") || reasonCode === "portal.evidence_refresh";
   const portalBlocked = reasonCode.startsWith("portal.legitimacy") || reasonCode.startsWith("governance.");
   const observedTarget = status.reasonCode === "state.mismatched" ? "new bay" : commandTarget;
-  const supportActor = isAiControlled
+  const operatorActor = isAiControlled
     ? {
         name: "LLM Operator",
-        role: "Keeps flow moving",
+        role: "Occupies the human operator seat",
         icon: BrainCircuit,
         state: ai?.thinking
           ? "working"
           : ai?.proposedAction?.status === "blocked"
             ? "blocked"
-            : phase === "replanning"
-              ? "reissued"
-              : status.reasonCode === "state.mismatched"
-                ? "planning"
-                : "standby",
-        active: Boolean(ai?.thinking || ai?.proposedAction || phase === "replanning" || status.reasonCode === "state.mismatched"),
+            : ai?.proposedAction
+              ? "working"
+              : "standby",
+        active: Boolean(ai?.thinking || ai?.proposedAction),
         operation: ai?.thinking
           ? "reading prompt and visible state"
           : ai?.proposedAction?.status === "blocked"
             ? `tool gated: ${ai.proposedAction.reasonCode}`
-            : phase === "replanning"
-              ? `handling recovery for ${commandTarget}`
-              : status.reasonCode === "state.mismatched"
-                ? "diagnosing broken flow"
-                : "waiting for query, command, or corruption prompt",
+            : ai?.proposedAction
+              ? `submitted ${ai.proposedAction.proposedTool} intent to the factory plan`
+              : "waiting for query, command, or corruption prompt",
       }
-    : {
-        name: "Planner Bot",
-        role: "Requests correction",
-        icon: Route,
-        state:
-          phase === "replanning"
-            ? "reissued"
-            : reasonCode.startsWith("ai.") || reasonCode.startsWith("intent.") || reasonCode.startsWith("supply_chain.")
-              ? "blocked"
-              : status.reasonCode === "state.mismatched"
-                ? "planning"
-                : "idle",
-        active:
-          phase === "replanning" ||
-          status.reasonCode === "state.mismatched" ||
-          reasonCode.startsWith("ai.") ||
-          reasonCode.startsWith("intent.") ||
-          reasonCode.startsWith("supply_chain."),
-        operation:
-          phase === "replanning"
-            ? `fresh command targets ${commandTarget}`
-            : reasonCode.startsWith("ai.") || reasonCode.startsWith("intent.") || reasonCode.startsWith("supply_chain.")
-              ? `LLM proposal gated: ${reasonCode}`
-              : status.reasonCode === "state.mismatched"
-                ? "selecting admissible replacement"
-                : "idle until reality changes",
-      };
+    : null;
+  const plannerNeedsRecovery =
+    phase === "replanning" ||
+    status.reasonCode === "state.mismatched" ||
+    (phase === "reviewing" && status.evidence === "insufficient");
+  const plannerActor = {
+    name: "Planner Bot",
+    role: "Maintains and repairs the plan",
+    icon: Route,
+    state:
+      phase === "replanning"
+        ? "reissued"
+        : reasonCode.startsWith("ai.") || reasonCode.startsWith("intent.") || reasonCode.startsWith("supply_chain.")
+          ? "blocked"
+          : plannerNeedsRecovery
+            ? "planning"
+            : "idle",
+    active:
+      plannerNeedsRecovery ||
+      reasonCode.startsWith("ai.") ||
+      reasonCode.startsWith("intent.") ||
+      reasonCode.startsWith("supply_chain."),
+    operation:
+      phase === "replanning"
+        ? `fresh command targets ${commandTarget}`
+        : reasonCode.startsWith("ai.") || reasonCode.startsWith("intent.") || reasonCode.startsWith("supply_chain.")
+          ? `operator proposal gated: ${reasonCode}`
+          : plannerNeedsRecovery
+            ? "selecting an admissible replacement from fresh evidence"
+            : "idle until the plan or reality changes",
+  };
   const actors = [
     {
       name: "Dispatch Authority",
@@ -824,7 +820,7 @@ function ActorFlowPanel({ activeRun, ai, isAiControlled, phase, status }) {
       icon: ShieldCheck,
       state: activeRun ? "signed" : "ready",
       active: status.reasonCode === "command.issued" || (!activeRun && phase === "ready"),
-      operation: activeRun ? `issued ${activeRun.command.commandId}` : "waiting to issue bay7 command",
+      operation: activeRun ? `issued ${activeRun.command.commandId}` : `waiting to issue ${factoryPlan.command.initialTarget} command`,
     },
     {
       name: "Robot Bot",
@@ -885,7 +881,7 @@ function ActorFlowPanel({ activeRun, ai, isAiControlled, phase, status }) {
             ? "legitimacy allowed"
             : "evaluating policy and evidence",
     },
-    supportActor,
+    plannerActor,
   ];
 
   return (
@@ -894,7 +890,12 @@ function ActorFlowPanel({ activeRun, ai, isAiControlled, phase, status }) {
         <Activity size={18} aria-hidden="true" />
         <h2>Actors & Operations</h2>
       </div>
-      <div className="actor-grid">
+      {operatorActor && (
+        <div className="actor-controller" aria-label="AI operator">
+          <ActorBox actor={operatorActor} />
+        </div>
+      )}
+      <div className="actor-grid" aria-label="Shared factory actors">
         {actors.map((actor) => (
           <ActorBox key={actor.name} actor={actor} />
         ))}
@@ -920,7 +921,7 @@ function ActorBox({ actor }) {
 
 function CurrentRecordPanel({ activeRun, trolley4Slot }) {
   return (
-    <details className="status-panel compact collapsible-panel" open>
+    <details className="status-panel compact collapsible-panel">
       <summary className="panel-heading">
         <CheckCircle2 size={18} aria-hidden="true" />
         <h2>Current Record</h2>
@@ -947,19 +948,10 @@ function CurrentRecordPanel({ activeRun, trolley4Slot }) {
 }
 
 function AuthorityTracePanel({ activeRun }) {
-  const [isOpen, setIsOpen] = useState(() => !activeRun);
   const traceReady = Boolean(activeRun?.trace?.actionEnvelopeHash);
 
-  useEffect(() => {
-    setIsOpen(!traceReady);
-  }, [traceReady]);
-
   return (
-    <details
-      className="status-panel trace-panel collapsible-panel"
-      open={isOpen}
-      onToggle={(event) => setIsOpen(event.currentTarget.open)}
-    >
+    <details className="status-panel trace-panel collapsible-panel">
       <summary className="panel-heading trace-summary">
         <KeyRound size={18} aria-hidden="true" />
         <h2>Authority Trace</h2>
@@ -977,9 +969,15 @@ function AuthorityTracePanel({ activeRun }) {
   );
 }
 
-function FactoryLedger({ className = "", events }) {
+function FactoryLedger({ className = "", events, initiallyOpen = false }) {
+  const [isOpen, setIsOpen] = useState(initiallyOpen);
+
   return (
-    <details className={`event-log collapsible-panel ${className}`} open>
+    <details
+      className={`event-log collapsible-panel ${className}`}
+      open={isOpen}
+      onToggle={(event) => setIsOpen(event.currentTarget.open)}
+    >
       <summary className="panel-heading">
         <h2>Factory Ledger</h2>
         <span className="trace-state active">{events.length}</span>

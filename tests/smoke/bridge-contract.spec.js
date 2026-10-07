@@ -46,7 +46,7 @@ test("production bridge and factory plan expose the same contract", async () => 
     contractVersion: AI_OPERATOR_CONTRACT_VERSION,
     factoryBays: authorityPolicy.bays,
   });
-  expect(factoryPlan.command.initialTarget).toBe("bay7");
+  expect(factoryPlan.command.initialTarget).toBe("bay5");
   expect(factoryPlan.command.destination).toBe("truck");
   expect(authorityPolicy.bays).toEqual(["bay1", "bay2", "bay3", "bay4", "bay5", "bay6", "bay7", "bay8"]);
   expect(authorityPolicy.bays.map((bayId) => slots[bayId].label)).toEqual([

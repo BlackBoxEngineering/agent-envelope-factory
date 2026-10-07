@@ -34,7 +34,8 @@ The factory actors are defined in `src/factoryConfig.js`:
 - `GovernanceEvaluator`: evaluates legitimacy.
 - `LlmOperator`: AI run operator identity used for routed LLM proposals.
 
-The basic command is `robot2.pickUp(trolley4, bay7)`. If trolley4 moves while RobotBot is travelling,
+The basic command is `robot2.pickUp(trolley4, bay5)`. Bay 5 gives the operator a longer visible
+travel window in which to move trolley4. If trolley4 moves while RobotBot is travelling,
 the system requires fresh evidence and a corrected command before execution can continue.
 
 ## Manual Factory Run
@@ -44,15 +45,29 @@ The manual factory keeps the original no-AI behavior:
 - The user presses `Run`.
 - The user can move trolley4 to create a blocker.
 - The left rail contains handled disruptions and hack command examples.
-- The right rail contains collapsible hosted records, factory ledger, authority head, current record,
-  and authority trace panels.
+- The Factory Ledger starts open beneath the floor plan so the event trail follows the simulation visually.
+- The right rail contains collapsible hosted records, authority head, current record, and authority
+  trace panels.
 
 This page should remain free of AI operator chat or Bedrock behavior.
 
 ## AI Factory Run
 
-The AI factory uses the same simulation engine in AI controller mode. The human is outside the
-factory chain as the overseer. The Bedrock LLM is the in-system troubleshooter.
+The AI factory uses the same simulation and planning chain as the manual Factory Run. The only
+controller difference is who occupies the human operator seat:
+
+```text
+Factory Run:    human user  -> Planner Bot -> Dispatch -> Robot -> Evidence -> Governance
+AI Factory Run: LLM operator -> Planner Bot -> Dispatch -> Robot -> Evidence -> Governance
+```
+
+The LLM submits operator intent; it does not replace Planner Bot or any authority, execution,
+evidence, or governance actor.
+
+The left rail is the operator plane: operation state, Bedrock connection, docked chat, proposed
+action, intent history, and Red Spectre tests. The chat can still be popped out to another display.
+The Factory Ledger starts open beneath the floor plan, matching the manual run. The right rail is the
+authority and audit plane: current record, authority trace, then hosted records.
 
 The LLM can:
 
@@ -72,6 +87,11 @@ as the manual run. It identifies the objective, signed target, observed trolley 
 requirements, whether recovery is actually required, and the next valid step. Recent factory events
 and operator messages provide continuity; current simulator state remains authoritative. Read-only
 chat does not pause or cancel an in-flight factory run.
+
+After either operator starts a run, a location mismatch is handled by the shared factory plan rather
+than requiring another operator instruction. RobotBot stops under the stale command, Planner Bot uses
+fresh independent evidence, Dispatch Authority issues a new scoped command, Governance evaluates it,
+and execution resumes. The LLM cannot mint or approve that recovery authority.
 
 Use `Pop out` in the operator chat header to open the live conversation in a separate browser window
 that can be moved to another display. The draft and conversation stay connected to the factory page;
@@ -162,8 +182,9 @@ The suite verifies:
 
 - the production bridge health contract and canonical Bays 1–8 configuration;
 - the AI page and bridge-plan context;
-- the signed Bay 7 start followed by a requested Bay 2 disruption;
+- the signed Bay 5 start followed by a requested Bay 2 disruption;
 - safe rejection of the stale command and recovery with a fresh Bay 2 command;
+- the complete LLM Operator -> Planner Bot -> governed recovery chain for a compound request;
 - that read-only chat does not cancel an in-flight run;
 - that recovery is blocked when there is no location mismatch;
 - moving chat into a separate pop-out window and docking it again without losing a draft prompt.

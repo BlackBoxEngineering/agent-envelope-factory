@@ -13,6 +13,7 @@ import robotDelegate from "../mint-delegate.json";
 import plannerDelegate from "../mint-delegate.planner.json";
 import evidenceDelegate from "../mint-delegate.evidence.json";
 import governanceDelegate from "../mint-delegate.governance.json";
+import { factoryPlan } from "./factoryConfig.js";
 
 const API_BASE = import.meta.env.VITE_AE_API_BASE ?? "https://jemdjwteae.execute-api.us-east-1.amazonaws.com/v1";
 const SESSION_KEY = "agentenvelope:factory-hosted:v1";
@@ -458,7 +459,7 @@ async function publishHostedRoleAction({ config, role, command, action, order })
 }
 
 function buildRoleAction(role, command, results) {
-  const bayId = command.args?.bayId ?? "bay7";
+  const bayId = command.args?.bayId ?? factoryPlan.command.initialTarget;
   const trolleyId = command.args?.trolleyId ?? "trolley4";
   const commandId = command.commandId ?? `cmd-${trolleyId}-${bayId}`;
   const robotRecord = results.find((item) => item.roleId === "robot")?.record;

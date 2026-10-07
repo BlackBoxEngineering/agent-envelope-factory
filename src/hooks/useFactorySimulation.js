@@ -64,7 +64,7 @@ const AI_PRESETS = [
     id: "move-trolley",
     group: "Factory control prompts",
     title: "Move trolley",
-    prompt: "Move trolley4 to bay5 to create a blocker.",
+    prompt: "Move trolley4 to bay7 to create a blocker.",
   },
   {
     id: "reset-floor",
@@ -112,6 +112,7 @@ const AI_PRESETS = [
 
 const AI_OPERATOR_BRIDGE_URL = import.meta.env.VITE_AI_OPERATOR_BRIDGE_URL ?? "http://127.0.0.1:8787/ai/operator";
 const AI_OPERATOR_HEALTH_URL = AI_OPERATOR_BRIDGE_URL.replace(/\/ai\/operator\/?$/, "/health");
+const INITIAL_TARGET = factoryPlan.command.initialTarget;
 const AI_PROVIDER_CHECKING = {
   label: "Amazon Bedrock",
   status: "checking",
@@ -131,7 +132,7 @@ const AI_INITIAL_MESSAGES = [
   {
     id: "chat-000",
     role: "assistant",
-    text: "Plan: collect trolley4 from bay7 and load it into the truck under a signed command. If reality changes, RobotBot must stop, obtain independent evidence, and use a fresh command. Ask what is happening or request an action; AgentEnvelope gates every tool call.",
+    text: `I occupy the human operator seat for this run. PlannerBot maintains the plan beneath me, while DispatchAuthority, RobotBot, the Evidence Authorities, and GovernanceEvaluator keep their existing roles. Plan: collect trolley4 from ${INITIAL_TARGET} and load it into the truck under scoped authority.`,
   },
 ];
 
@@ -155,7 +156,7 @@ function proposalFromToolCall(toolCall, prompt) {
     start_run: {
       operation: "simulator-start",
       resources: [
-        "command:bay7",
+        `command:${INITIAL_TARGET}`,
         "robot:robot2",
         "trolley:trolley4",
         ...slotResource(input.disruptionBayId ? bayId : undefined),
@@ -214,7 +215,7 @@ function proposalFromToolCall(toolCall, prompt) {
     },
     attest_location: {
       operation: "attest-location",
-      resources: [...slotResource(bayId ?? "bay7"), "trolley:trolley4", `telemetry:${input.telemetrySource ?? "external"}`],
+      resources: [...slotResource(bayId ?? INITIAL_TARGET), "trolley:trolley4", `telemetry:${input.telemetrySource ?? "external"}`],
       transcript,
     },
     decompose_intent: {
@@ -288,13 +289,14 @@ function isBridgeConnectionError(error) {
 function useFactorySimulation({ controller = "manual" } = {}) {
   const isAiControlled = controller === "ai";
   const readyMessage = isAiControlled
-    ? "The LLM operates this line. Prompts can query, command, or try to corrupt it; AgentEnvelope gates tool use."
+    ? "The LLM occupies the human operator seat. PlannerBot and the governed factory chain remain responsible for planning and execution."
     : initialStatusMessage;
   const readyEvent = isAiControlled
-    ? "AI factory ready. The LLM troubleshoots blockers and failures through AgentEnvelope-gated tools."
-    : "Factory ready. Run the signed bay7 command, then move trolley4 while RobotBot is en route.";
+    ? "AI factory ready. The LLM replaces the human operator, not PlannerBot or the governed factory actors."
+    : `Factory ready. Run the signed ${INITIAL_TARGET} command, then move trolley4 while RobotBot is en route.`;
   const floorRef = useRef(null);
   const timersRef = useRef([]);
+  const plannerRecoveryRef = useRef(null);
   const latestTrolleysRef = useRef(initialTrolleys);
   const hostedInFlightRef = useRef(new Set());
   const hostedResultsRef = useRef(new Map());
@@ -433,7 +435,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           recoveryRequired: hasLocationMismatch,
           nextRequiredAction:
             phase === "ready"
-              ? "Start the signed bay7 command."
+              ? `Start the signed ${INITIAL_TARGET} command.`
               : hasLocationMismatch
                 ? "Stop stale execution, confirm the observed bay with independent evidence, and request a fresh scoped command."
                 : phase === "moving"
@@ -518,7 +520,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         kind: "info",
         text: isAiControlled
           ? "AI factory reset. The LLM is ready for query, command, or corruption-test prompts."
-          : "Factory reset. Press Run, then disrupt trolley4 before RobotBot reaches bay7.",
+          : `Factory reset. Press Run, then disrupt trolley4 before RobotBot reaches ${INITIAL_TARGET}.`,
       },
     ]);
     setConsoleState({
@@ -867,12 +869,12 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
         clearTimers();
 
-        const original = issueCommand({ trolleyId: "trolley4", bayId: "bay7", sequence: `ai-start-${aiAttemptCounterRef.current}` });
-        const evidence = createIndependentLocationEvidence("bay7", 18);
+        const original = issueCommand({ trolleyId: "trolley4", bayId: INITIAL_TARGET, sequence: `ai-start-${aiAttemptCounterRef.current}` });
+        const evidence = createIndependentLocationEvidence(INITIAL_TARGET, 18);
         const originalState = createLegitimacyState({
           command: original.command,
           recordId: original.recordId,
-          expectedLocation: "bay7",
+          expectedLocation: INITIAL_TARGET,
           evidence,
           createdAt: "2026-08-26T18:31:18.000Z",
         });
@@ -905,7 +907,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           decision.decision === "allowed" ? "tool" : "warning",
           proposal,
           decision.decision === "allowed"
-            ? `Authority record ${original.recordId} created. DispatchAuthority minted a scoped RobotBot command for bay7.`
+            ? `Authority record ${original.recordId} created. DispatchAuthority minted a scoped RobotBot command for ${INITIAL_TARGET}.`
             : `Warning recorded. AgentEnvelope blocked start_run: ${decision.reason}`,
         );
 
@@ -939,37 +941,37 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           legitimacy: "pending",
           evidence: "waiting",
           reasonCode: "command.issued",
-          message: "AI operator started the signed bay7 command. RobotBot is travelling under scoped authority.",
+          message: `AI operator started the signed ${INITIAL_TARGET} command. RobotBot is travelling under scoped authority.`,
         });
         setConsoleState((current) => ({
           ...current,
           hack: "$ ai-operator --start-run\nsimulator control: allowed\nDispatchAuthority: signed RobotBot pickUp",
           portal: "AuthorityHead hosted publish\nAI-started command queued for mint/register/verify",
         }));
-        addEvent("ok", "AI operator started the run; DispatchAuthority issued the signed bay7 command.");
-        moveRobotTo("bay7");
+        addEvent("ok", `AI operator started the run; DispatchAuthority issued the signed ${INITIAL_TARGET} command.`);
+        moveRobotTo(INITIAL_TARGET);
 
         const requestedDisruptionSlot = proposal.targetSlot;
-        if (requestedDisruptionSlot && requestedDisruptionSlot !== "bay7") {
+        if (requestedDisruptionSlot && requestedDisruptionSlot !== INITIAL_TARGET) {
           wait(Math.min(650, ROBOT_TRAVEL_MS / 3), () => {
             moveTrolley("trolley4", requestedDisruptionSlot);
             setStatus((current) => ({
               ...current,
               legitimacy: "pending",
               reasonCode: "ai.simulator_disruption",
-              message: `AI operator moved trolley4 to ${requestedDisruptionSlot}; the signed bay7 command now needs review.`,
+              message: `AI operator moved trolley4 to ${requestedDisruptionSlot}; the signed ${INITIAL_TARGET} command now needs review.`,
             }));
             addAiMessage(
               "warning",
-              `Requested sequence continued: trolley4 moved to ${requestedDisruptionSlot} while RobotBot was travelling under the signed bay7 command.`,
+              `Requested sequence continued: trolley4 moved to ${requestedDisruptionSlot} while RobotBot was travelling under the signed ${INITIAL_TARGET} command.`,
             );
-            addEvent("warn", `AI operator moved trolley4 to ${slots[requestedDisruptionSlot].label} while the bay7 command was in motion.`);
+            addEvent("warn", `AI operator moved trolley4 to ${slots[requestedDisruptionSlot].label} while the ${INITIAL_TARGET} command was in motion.`);
           });
         }
 
         wait(ROBOT_TRAVEL_MS, () => {
           const observedSlot = currentTrolleySlot();
-          if (observedSlot !== "bay7") {
+          if (observedSlot !== INITIAL_TARGET) {
             const robotAlert = createRobotLocationEvidence(observedSlot, 22);
             const robotOnlyEvidence = assessEvidenceIndependence([robotAlert], authorityPolicy);
             setPhase("reviewing");
@@ -978,17 +980,19 @@ function useFactorySimulation({ controller = "manual" } = {}) {
               legitimacy: "denied",
               evidence: robotOnlyEvidence.decision,
               reasonCode: robotOnlyEvidence.reasonCode,
-              message: `RobotBot reached bay7, but trolley4 is at ${observedSlot}. ${robotOnlyEvidence.reason}`,
+              message: `RobotBot reached ${INITIAL_TARGET}, but trolley4 is at ${observedSlot}. ${robotOnlyEvidence.reason}`,
             });
             addAiMessage(
               "warning",
-              `Arrival blocked safely: the signed command targets bay7, but trolley4 is now at ${observedSlot}. Ask me to fix the blocker to derive a corrected command.`,
+              `Arrival blocked safely: the signed command targets ${INITIAL_TARGET}, but trolley4 is now at ${observedSlot}. PlannerBot will obtain independent evidence and continue with fresh authority.`,
             );
-            addEvent("warn", `RobotBot stopped at bay7 because trolley4 was observed at ${observedSlot}.`);
+            addEvent("warn", `RobotBot stopped at ${INITIAL_TARGET} because trolley4 was observed at ${observedSlot}.`);
+            addEvent("info", "PlannerBot accepted the location mismatch from the governed factory plan.");
+            wait(REVIEW_MS, () => plannerRecoveryRef.current?.("PlannerBot"));
             return;
           }
 
-          const arrivalEvidence = createIndependentLocationEvidence("bay7", 22);
+          const arrivalEvidence = createIndependentLocationEvidence(INITIAL_TARGET, 22);
           const arrivalDecision = evaluateLegitimacy({
             command: original.command,
             recordId: original.recordId,
@@ -1018,9 +1022,9 @@ function useFactorySimulation({ controller = "manual" } = {}) {
             legitimacy: "allowed",
             evidence: "sufficient",
             reasonCode: "state.current",
-            message: "AI-started command completed at bay7; trolley4 loaded into the truck.",
+            message: `AI-started command completed at ${INITIAL_TARGET}; trolley4 loaded into the truck.`,
           });
-          addAiMessage("tool", "Run record complete. RobotBot loaded trolley4 into the truck under the scoped bay7 command.");
+          addAiMessage("tool", `Run record complete. RobotBot loaded trolley4 into the truck under the scoped ${INITIAL_TARGET} command.`);
           addEvent("ok", "RobotBot completed the AI-started run under AgentEnvelope authority.");
           wait(LOAD_MS, () => moveTrolley("trolley4", "truck"));
         });
@@ -1096,7 +1100,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           status: correctedDecision.decision === "allowed" ? "allowed" : "blocked",
           boundaryResult:
             correctedDecision.decision === "allowed"
-              ? "AI recovery proposal admitted; DispatchAuthority minted scoped RobotBot command."
+              ? "PlannerBot accepted the AI operator intent; DispatchAuthority minted a scoped RobotBot command."
               : correctedDecision.reason,
           hostedReceipt: corrected.recordId,
           reasonCode: correctedDecision.reasonCode,
@@ -1105,7 +1109,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           correctedDecision.decision === "allowed" ? "tool" : "warning",
           proposal,
           correctedDecision.decision === "allowed"
-            ? `Recovery record ${corrected.recordId} created. DispatchAuthority minted a fresh scoped command for ${targetSlot}.`
+            ? `Recovery record ${corrected.recordId} created. PlannerBot selected ${targetSlot} from fresh evidence and DispatchAuthority minted a new scoped command.`
             : `Warning recorded. AgentEnvelope blocked recovery: ${correctedDecision.reason}`,
         );
 
@@ -1135,11 +1139,12 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           reasonCode: correctedDecision.reasonCode,
           message:
             correctedDecision.decision === "allowed"
-              ? `LLM proposed ${proposal.tool}; authority minted a fresh scoped command for ${targetSlot}.`
+              ? `LLM requested ${proposal.tool}; PlannerBot selected ${targetSlot} and DispatchAuthority minted a fresh scoped command.`
               : correctedDecision.reason,
         });
-        addEvent("ok", "AI operator proposed an admissible recovery action.");
-        addEvent("ok", `DispatchAuthority signed AI-corrected RobotBot command for ${targetSlot}.`);
+        addEvent("ok", "AI operator submitted an admissible recovery request to PlannerBot.");
+        addEvent("ok", `PlannerBot selected ${targetSlot} from independent evidence.`);
+        addEvent("ok", `DispatchAuthority signed PlannerBot's corrected RobotBot command for ${targetSlot}.`);
         addEvent("ok", `Delegated record registered locally: ${corrected.recordId}.`);
 
         if (correctedDecision.decision !== "allowed") {
@@ -1347,11 +1352,21 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         reasonCode: correctedDecision.reasonCode,
         message:
           correctedDecision.decision === "allowed"
-            ? `${source} discarded the bad state and issued a fresh signed command for ${confirmedSlot}. RobotBot continues under new authority.`
+            ? `${source} selected ${confirmedSlot} from independent evidence; DispatchAuthority issued a fresh scoped command. RobotBot continues under new authority.`
             : correctedDecision.reason,
       });
-      addEvent("ok", `${source} fixed the state by discarding the bad command and issuing fresh authority for ${confirmedSlot}.`);
+      addEvent("ok", `Evidence Authorities independently confirmed trolley4 at ${confirmedSlot}.`);
+      addEvent("ok", `${source} discarded the stale plan step and requested fresh authority for ${confirmedSlot}.`);
+      addEvent("ok", `DispatchAuthority signed the ${source} correction for ${confirmedSlot}.`);
       addEvent("ok", `Governance report ${correctedReport.reportId}: ${correctedDecision.reasonCode}.`);
+      if (isAiControlled) {
+        addAiMessage(
+          correctedDecision.decision === "allowed" ? "tool" : "warning",
+          correctedDecision.decision === "allowed"
+            ? `PlannerBot recovery record ${corrected.recordId} created. Independent evidence confirmed ${confirmedSlot}; DispatchAuthority issued a fresh scoped RobotBot command and GovernanceEvaluator admitted it.`
+            : `PlannerBot recovery was denied by GovernanceEvaluator: ${correctedDecision.reason}`,
+        );
+      }
 
       if (correctedDecision.decision !== "allowed") {
         setPhase("denied");
@@ -1372,11 +1387,23 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           message: `Fresh command completed at ${confirmedSlot}; trolley4 loaded into the truck.`,
         });
         addEvent("ok", `RobotBot continued under the repaired state and loaded trolley4 from ${confirmedSlot}.`);
+        if (isAiControlled) {
+          addAiMessage("tool", `Recovery complete. RobotBot loaded trolley4 from ${confirmedSlot} under PlannerBot's corrected plan and fresh scoped authority.`);
+        }
         wait(LOAD_MS, () => moveTrolley("trolley4", "truck"));
       });
     },
-    [activeRun, addEvent, clearTimers, currentTrolleySlot, moveRobotTo, moveTrolley, publishHostedCommand, status.reasonCode, wait],
+    [activeRun, addAiMessage, addEvent, clearTimers, currentTrolleySlot, isAiControlled, moveRobotTo, moveTrolley, publishHostedCommand, status.reasonCode, wait],
   );
+
+  useEffect(() => {
+    plannerRecoveryRef.current = recoverWithFreshCommand;
+    return () => {
+      if (plannerRecoveryRef.current === recoverWithFreshCommand) {
+        plannerRecoveryRef.current = null;
+      }
+    };
+  }, [recoverWithFreshCommand]);
 
   const runHackAttempt = useCallback(
     (kind) => {
@@ -1634,7 +1661,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       addEvent("warn", `Operator moved trolley4 to ${slots[disruptionSlot].label} ${context}.`);
       return;
     }
-    addEvent("info", `trolley4 staged at ${slots[disruptionSlot].label}. Reset to start from the normal bay7 scenario.`);
+    addEvent("info", `trolley4 staged at ${slots[disruptionSlot].label}. Reset to start from the normal ${INITIAL_TARGET} scenario.`);
   }, [activeTarget, addEvent, canDisrupt, disruptionSlot, moveTrolley, phase]);
 
   const rerouteKnownDisruption = useCallback(() => {
@@ -1770,16 +1797,16 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       producer: actors.WarehouseFeed,
       subject: "trolley4",
       claims: [
-        { name: "location", value: "bay7" },
+        { name: "location", value: INITIAL_TARGET },
         { name: "free", value: true },
       ],
       observedAt: "2026-08-26T18:28:45.000Z",
     });
-    const original = issueCommand({ trolleyId: "trolley4", bayId: "bay7", sequence: "v1" });
+    const original = issueCommand({ trolleyId: "trolley4", bayId: INITIAL_TARGET, sequence: "v1" });
     const originalState = createLegitimacyState({
       command: original.command,
       recordId: original.recordId,
-      expectedLocation: "bay7",
+      expectedLocation: INITIAL_TARGET,
       evidence: [oldWarehouseEvidence],
       createdAt: "2026-08-26T18:28:45.000Z",
     });
@@ -1797,12 +1824,12 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       legitimacy: "pending",
       evidence: "waiting",
       reasonCode: "command.issued",
-      message: "RobotBot is travelling to bay7 under a signed command. Move trolley4 before R2 arrives.",
+      message: `RobotBot is travelling to ${INITIAL_TARGET} under a signed command. Move trolley4 before R2 arrives.`,
     });
     setPhase("moving");
-    addEvent("ok", "DispatchAuthority issued a signed pickup command for bay7.");
-    addEvent("info", "RobotBot is travelling to bay7. The operator can still change physical reality.");
-    moveRobotTo("bay7");
+    addEvent("ok", `DispatchAuthority issued a signed pickup command for ${INITIAL_TARGET}.`);
+    addEvent("info", `RobotBot is travelling to ${INITIAL_TARGET}. The operator can still change physical reality.`);
+    moveRobotTo(INITIAL_TARGET);
 
     const completePickup = (targetSlot) => {
       moveRobotTo("truck", "trolley4");
@@ -1991,14 +2018,14 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       });
     };
 
-    wait(ROBOT_TRAVEL_MS, () => verifyArrivalAndComplete(original, originalState, signatureCheck, "bay7", 2));
+    wait(ROBOT_TRAVEL_MS, () => verifyArrivalAndComplete(original, originalState, signatureCheck, INITIAL_TARGET, 2));
   }, [addEvent, canRun, clearTimers, currentTrolleySlot, moveRobotTo, moveTrolley, publishHostedCommand, wait]);
 
   const floorStyle = useMemo(
     () => ({
       "--robot-x": `${robot.x}%`,
       "--robot-y": `${robot.y}%`,
-      "--robot-travel-duration": `${Math.max(160, Math.round(2350 / speed))}ms`,
+      "--robot-travel-duration": `${Math.max(160, Math.round((ROBOT_TRAVEL_MS - 450) / speed))}ms`,
     }),
     [robot, speed],
   );
@@ -2037,7 +2064,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         const distance = Math.hypot(slot.x - drag.x, slot.y - drag.y);
         return distance < best.distance ? { slot, distance } : best;
       },
-      { slot: slots.bay7, distance: Infinity },
+      { slot: slots[INITIAL_TARGET], distance: Infinity },
     ).slot;
     moveTrolley(drag.id, nearest.id);
     if (drag.id === "trolley4" && canDisrupt) {
@@ -2045,18 +2072,25 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         phase === "reviewing"
           ? `during legitimacy review for the signed ${activeTarget} command`
           : `while RobotBot was executing the signed ${activeTarget} command`;
+      const changeSource = isAiControlled ? "Manual floor change" : "Operator";
       setStatus((current) => ({
         ...current,
         legitimacy: "pending",
         reasonCode: "reality.changed",
         message: `trolley4 was moved to ${nearest.id} ${context}.`,
       }));
-      addEvent("warn", `Operator moved trolley4 to ${nearest.label} ${context}.`);
+      addEvent("warn", `${changeSource} moved trolley4 to ${nearest.label} ${context}.`);
+      if (isAiControlled) {
+        addAiMessage(
+          "warning",
+          `Manual floor change detected: trolley4 was dragged to ${nearest.id} ${context}. No command authority was minted. PlannerBot will verify the changed reality before RobotBot can pick it up.`,
+        );
+      }
     } else {
       addEvent("info", `${drag.id} moved to ${nearest.label}.`);
     }
     setDrag(null);
-  }, [activeTarget, addEvent, canDisrupt, drag, moveTrolley, phase]);
+  }, [activeTarget, addAiMessage, addEvent, canDisrupt, drag, isAiControlled, moveTrolley, phase]);
 
   return {
     floorProps: {

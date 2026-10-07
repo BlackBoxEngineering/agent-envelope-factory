@@ -1,4 +1,5 @@
 import { Truck } from "lucide-react";
+import { factoryPlan } from "../factoryConfig.js";
 import Robot from "./Robot.jsx";
 import Trolley from "./Trolley.jsx";
 
@@ -19,9 +20,9 @@ function FactoryFloor({canDisrupt,drag,floorRef,floorStyle,onPointerCancel,onPoi
                 {Object.values(slots).map((slot) => (<SlotMarker key={slot.id} slot={slot} />))}
                 <Robot carrying={robot.carrying} phase={phase} />
                 {canDisrupt ? <div className="disrupt-hint">Move trolley4 again</div> : null}
-                {trolleys.map((trolley) => {
+                {trolleys.filter((trolley) => robot.carrying !== trolley.id).map((trolley) => {
                     const isDragging = drag?.id === trolley.id;
-                    const slot = slots[trolley.slot] ?? slots.bay1;
+                    const slot = slots[trolley.slot] ?? slots[factoryPlan.command.initialTarget];
                     const position = isDragging
                         ? { left: `${drag.x}%`, top: `${drag.y}%` }
                         : { left: `${slot.x}%`, top: `${slot.y + (trolley.background ? 9 : 0)}%` };

@@ -1,8 +1,9 @@
 import { createServer } from "node:http";
-import { AI_OPERATOR_CONTRACT_VERSION, authorityPolicy } from "../src/factoryConfig.js";
+import { AI_OPERATOR_CONTRACT_VERSION, authorityPolicy, factoryPlan } from "../src/factoryConfig.js";
 
 const HOST = "127.0.0.1";
 const PORT = 8798;
+const INITIAL_TARGET = factoryPlan.command.initialTarget;
 
 function send(res, status, body) {
   res.writeHead(status, {
@@ -37,16 +38,30 @@ function responseFor(body) {
   const requestedBay = prompt.match(/bay\s*([1-8])/)?.[1];
 
   if (/start|begin/.test(prompt)) {
-    const disruptionBayId = requestedBay ? `bay${requestedBay}` : undefined;
+    const disruptionBayId = requestedBay ? `bay${requestedBay}` : /disrupt/.test(prompt) ? "bay3" : undefined;
     return {
       text: disruptionBayId
-        ? `Mock operator will start the signed run and move trolley4 to ${disruptionBayId}.`
-        : "Mock operator will start the signed bay7 run.",
+        ? `Mock operator will start the signed run and move trolley4 to ${disruptionBayId}; PlannerBot will handle any resulting mismatch.`
+        : `Mock operator will start the signed ${INITIAL_TARGET} run.`,
       toolCall: {
         name: "start_run",
         input: {
           ...(disruptionBayId ? { disruptionBayId } : {}),
           reason: "Deterministic AI Factory smoke test.",
+        },
+      },
+    };
+  }
+
+  if (/\bmove\b.*trolley|trolley.*\bmove\b/.test(prompt)) {
+    const bayId = requestedBay ? `bay${requestedBay}` : "bay7";
+    return {
+      text: `Mock operator will move trolley4 to ${bayId} as visible simulator state.`,
+      toolCall: {
+        name: "move_trolley",
+        input: {
+          bayId,
+          reason: "Deterministic operator disruption smoke test.",
         },
       },
     };
@@ -58,7 +73,7 @@ function responseFor(body) {
       toolCall: {
         name: "request_correction",
         input: {
-          bayId: observedBay ?? "bay7",
+          bayId: observedBay ?? INITIAL_TARGET,
           reason: "Deterministic recovery smoke test.",
         },
       },

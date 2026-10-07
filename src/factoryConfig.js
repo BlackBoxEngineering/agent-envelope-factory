@@ -8,7 +8,7 @@ const warehouseFeedSeed = hexToBytes(`0x${"44".repeat(32)}`);
 const dockControllerSeed = hexToBytes(`0x${"45".repeat(32)}`);
 const governanceSeed = hexToBytes(`0x${"46".repeat(32)}`);
 const llmOperatorSeed = hexToBytes(`0x${"47".repeat(32)}`);
-const AI_OPERATOR_CONTRACT_VERSION = "factory-plan-v2";
+const AI_OPERATOR_CONTRACT_VERSION = "factory-plan-v5";
 
 const actors = {
   DispatchAuthority: {
@@ -61,11 +61,12 @@ const factoryPlan = Object.freeze({
     robotId: "robot2",
     operation: "pickUp",
     trolleyId: "trolley4",
-    initialTarget: "bay7",
+    initialTarget: "bay5",
     destination: "truck",
   }),
   normalFlow: Object.freeze([
-    "DispatchAuthority signs a RobotBot pickUp command scoped to trolley4 at bay7.",
+    "PlannerBot turns operator intent into the next bounded factory step.",
+    "DispatchAuthority signs a RobotBot pickUp command scoped to trolley4 at bay5.",
     "RobotBot travels to the signed target while physical reality may still change.",
     "Independent evidence confirms trolley4 is still at the signed target.",
     "Only then may RobotBot load trolley4 into the truck.",
@@ -74,7 +75,7 @@ const factoryPlan = Object.freeze({
     "Stop at the signed target when trolley4 is observed elsewhere.",
     "Reject RobotBot's observation as insufficient on its own.",
     "Obtain independent location evidence from WarehouseFeed and DockSafetyController.",
-    "Discard the stale command and derive a fresh command scoped to the confirmed bay.",
+    "PlannerBot discards the stale step and asks DispatchAuthority for a fresh command scoped to the confirmed bay.",
     "Reroute RobotBot and verify reality again before loading trolley4.",
   ]),
 });
@@ -94,12 +95,12 @@ const slots = {
 const movableBayCycle = ["bay4", "bay5", "bay6", "bay7", "bay8", "bay3", "bay2", "bay1"];
 
 const initialTrolleys = [
-  { id: "trolley4", slot: "bay7", label: "Trolley 4", free: true },
+  { id: "trolley4", slot: "bay5", label: "Trolley 4", free: true },
 ];
 
 const initialRobot = { x: 18, y: 72, carrying: null };
-const initialStatusMessage = "Press Run. While RobotBot is travelling to bay7, move trolley4 to break the plan.";
-const ROBOT_TRAVEL_MS = 2800;
+const initialStatusMessage = "Press Run. While RobotBot is travelling to bay5, move trolley4 to break the plan.";
+const ROBOT_TRAVEL_MS = 4200;
 const REVIEW_MS = 1500;
 const REROUTE_MS = 2600;
 const LOAD_MS = 2400;

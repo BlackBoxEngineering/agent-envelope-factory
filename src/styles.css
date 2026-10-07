@@ -243,7 +243,7 @@ button {
 }
 
 .ai-workspace {
-  grid-template-columns: minmax(260px, 320px) minmax(680px, 1fr) minmax(300px, 360px);
+  grid-template-columns: minmax(320px, 380px) minmax(620px, 1fr) minmax(300px, 360px);
 }
 
 .app-footer {
@@ -813,14 +813,14 @@ button {
 
 .center-panel {
   display: grid;
-  grid-template-rows: auto minmax(340px, 2fr) minmax(250px, 1fr);
+  grid-template-rows: auto minmax(340px, 2fr) minmax(58px, 0.75fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
 .ai-workspace .center-panel {
-  grid-template-rows: auto minmax(260px, 1fr) minmax(360px, 1.05fr);
+  grid-template-rows: auto minmax(260px, 2fr) minmax(58px, 0.75fr);
 }
 
 .center-actors {
@@ -957,16 +957,32 @@ button {
   box-shadow: 0 12px 24px rgba(23, 32, 38, 0.16);
 }
 
-.carry-label {
+.carried-trolley {
   position: absolute;
-  top: -16px;
-  min-width: 72px;
-  padding: 3px 6px;
-  border-radius: 5px;
-  background: #172026;
-  color: #f8fbfc;
+  z-index: -1;
+  left: 54px;
+  top: 14px;
+  width: 82px;
+  height: 48px;
+  border: 2px solid #784f18;
+  border-radius: 7px;
+  background: #f0c468;
+  color: #3f2d11;
+  display: grid;
+  place-items: center;
+  gap: 0;
+  box-shadow: 0 12px 20px rgba(23, 32, 38, 0.18);
+  pointer-events: none;
+}
+
+.carried-trolley span {
+  font-weight: 900;
+  line-height: 1;
+}
+
+.carried-trolley small {
   font-size: 11px;
-  text-align: center;
+  line-height: 1;
 }
 
 .trolley {
@@ -1047,6 +1063,14 @@ button {
 
 .center-actors .actor-grid {
   grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.actor-controller {
+  margin-bottom: 10px;
+}
+
+.actor-controller .actor-box {
+  width: 100%;
 }
 
 .actor-grid {
@@ -1782,6 +1806,14 @@ button {
   min-height: 0;
 }
 
+.manual-under-floor {
+  overflow: hidden;
+}
+
+.manual-under-floor > .event-log {
+  max-height: 100%;
+}
+
 .event-log ol {
   margin: 12px 0 0;
   padding: 0;
@@ -1935,9 +1967,15 @@ button {
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42), 0 0 20px rgba(54, 216, 255, 0.16);
 }
 
-.robot-arm,
-.carry-label {
+.robot-arm {
   background: #06131a;
+}
+
+.carried-trolley {
+  border-color: color-mix(in srgb, var(--ae-gold) 64%, #07080b);
+  background: var(--ae-gold);
+  color: #07080b;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.42), var(--ae-gold-glow);
 }
 
 .actor-box,
@@ -2212,6 +2250,38 @@ button {
   padding: 14px;
 }
 
+.ai-prompt-panel.sidebar {
+  display: grid;
+  grid-template-rows: auto minmax(220px, 1fr) auto;
+  flex: 1 0 520px;
+  min-height: 480px;
+  gap: 10px;
+  padding: 12px;
+}
+
+.ai-prompt-panel.sidebar .ai-chat-title-row {
+  align-items: flex-start;
+}
+
+.ai-prompt-panel.sidebar .ai-chat-window-control span {
+  display: none;
+}
+
+.ai-prompt-panel.sidebar.undocked .ai-chat-window-control span {
+  display: inline;
+}
+
+.ai-prompt-panel.sidebar .ai-live-prompt {
+  margin-top: 0;
+  padding-top: 10px;
+}
+
+.ai-prompt-panel.sidebar .ai-live-prompt textarea {
+  min-height: 72px;
+  max-height: 120px;
+  resize: vertical;
+}
+
 .ai-chat-header {
   display: grid;
   gap: 8px;
@@ -2396,15 +2466,17 @@ button {
   height: 100vh;
 }
 
-.ai-chat-popout-root .ai-prompt-panel.under-floor.undocked {
+.ai-chat-popout-root .ai-prompt-panel.undocked {
   width: 100%;
   height: 100%;
+  min-height: 0;
+  flex: none;
   padding: 18px;
   border-radius: 0;
   box-shadow: none;
 }
 
-.ai-prompt-panel.under-floor.undocked {
+.ai-prompt-panel.undocked {
   width: min(1000px, calc(100vw - 48px));
   height: min(760px, calc(100vh - 48px));
   max-height: none;
@@ -2414,17 +2486,17 @@ button {
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.72), var(--ae-gold-glow);
 }
 
-.ai-prompt-panel.under-floor.undocked .ai-chat-thread {
+.ai-prompt-panel.undocked .ai-chat-thread {
   padding: 4px 12px 4px 4px;
 }
 
-.ai-prompt-panel.under-floor.undocked .ai-chat-message {
+.ai-prompt-panel.undocked .ai-chat-message {
   width: fit-content;
   max-width: min(78%, 760px);
   padding: 12px;
 }
 
-.ai-prompt-panel.under-floor.undocked .ai-live-prompt textarea {
+.ai-prompt-panel.undocked .ai-live-prompt textarea {
   min-height: 96px;
   max-height: 180px;
   resize: vertical;
@@ -2768,13 +2840,13 @@ button {
     padding: 8px;
   }
 
-  .ai-prompt-panel.under-floor.undocked {
+  .ai-prompt-panel.undocked {
     width: 100%;
     height: 100%;
     padding: 12px;
   }
 
-  .ai-prompt-panel.under-floor.undocked .ai-chat-message {
+  .ai-prompt-panel.undocked .ai-chat-message {
     max-width: 94%;
   }
 
