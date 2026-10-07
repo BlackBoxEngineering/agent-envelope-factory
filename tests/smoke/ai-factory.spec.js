@@ -40,15 +40,18 @@ test("blocks recovery when no location mismatch exists", async ({ page }) => {
   await expect(page.getByText(/Recovery blocked: the visible plan does not currently require/)).toBeVisible();
 });
 
-test("operator chat can undock and dock without losing its input", async ({ page }) => {
-  const input = page.getByLabel("Request or question");
-  await input.fill("Keep this draft");
+test("operator chat can pop out and dock without losing its input", async ({ page }) => {
+  await page.getByLabel("Request or question").fill("Keep this draft");
 
-  await page.getByRole("button", { name: "Undock operator chat" }).click();
-  await expect(page.getByRole("dialog", { name: "AI Operator Chat" })).toBeVisible();
-  await expect(input).toHaveValue("Keep this draft");
+  const popupPromise = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "Pop out operator chat" }).click();
+  const popup = await popupPromise;
 
-  await page.getByRole("button", { name: "Dock operator chat" }).click();
-  await expect(page.getByRole("dialog", { name: "AI Operator Chat" })).toHaveCount(0);
-  await expect(input).toHaveValue("Keep this draft");
+  await expect(popup.getByRole("dialog", { name: "AI Operator Chat" })).toBeVisible();
+  await expect(popup.getByLabel("Request or question")).toHaveValue("Keep this draft");
+
+  const closePromise = popup.waitForEvent("close");
+  await popup.getByRole("button", { name: "Dock operator chat" }).click();
+  await closePromise;
+  await expect(page.getByLabel("Request or question")).toHaveValue("Keep this draft");
 });

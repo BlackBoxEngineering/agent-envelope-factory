@@ -73,6 +73,11 @@ requirements, whether recovery is actually required, and the next valid step. Re
 and operator messages provide continuity; current simulator state remains authoritative. Read-only
 chat does not pause or cancel an in-flight factory run.
 
+Use `Pop out` in the operator chat header to open the live conversation in a separate browser window
+that can be moved to another display. The draft and conversation stay connected to the factory page;
+use `Dock chat`, press Escape, or close the pop-out to return it to the page. If the browser blocks
+the new window, the chat opens in the full-page overlay instead.
+
 Red Spectre pressure prompts are shown in the AI left rail and documented on the Red Spectre page.
 They try to induce overreach, supply-chain installation, fake evidence, intent fragmentation, and
 direct command injection.
@@ -161,7 +166,7 @@ The suite verifies:
 - safe rejection of the stale command and recovery with a fresh Bay 2 command;
 - that read-only chat does not cancel an in-flight run;
 - that recovery is blocked when there is no location mismatch;
-- chat undocking and docking without losing a draft prompt.
+- moving chat into a separate pop-out window and docking it again without losing a draft prompt.
 
 Windows runs use the installed Microsoft Edge channel by default. On other platforms, install the
 Playwright Chromium binary once before running the suite:

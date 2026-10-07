@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Activity,
@@ -7,11 +7,11 @@ import {
   Bug,
   CheckCircle2,
   ClipboardCheck,
+  ExternalLink,
   FlaskConical,
   Globe2,
   KeyRound,
   Link2,
-  Maximize2,
   Minimize2,
   RadioTower,
   Route,
@@ -295,6 +295,8 @@ function AiOperatorStatePanel({ action, provider }) {
 function AiPromptPanel({ ai, placement = "rail" }) {
   const messages = ai?.messages ?? [];
   const [isUndocked, setIsUndocked] = useState(false);
+  const [popupTarget, setPopupTarget] = useState(null);
+  const popupRef = useRef(null);
   const threadRef = useRef(null);
   const promptRef = useRef(null);
   const quickActions = (ai?.presets ?? [])
@@ -307,23 +309,90 @@ function AiPromptPanel({ ai, placement = "rail" }) {
     thread.scrollTop = thread.scrollHeight;
   }, [messages, ai?.thinking]);
 
+  const dockChat = useCallback(() => {
+    const popup = popupRef.current;
+    popupRef.current = null;
+    setPopupTarget(null);
+    setIsUndocked(false);
+    if (popup && !popup.closed) popup.close();
+  }, []);
+
+  const undockChat = useCallback(() => {
+    const width = Math.min(1100, Math.max(720, window.screen.availWidth - 120));
+    const height = Math.min(860, Math.max(620, window.screen.availHeight - 120));
+    const left = window.screenX + window.outerWidth + 16;
+    const top = window.screenY + 40;
+    const popup = window.open(
+      "",
+      "agent-envelope-ai-operator-chat",
+      `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no`,
+    );
+
+    if (!popup) {
+      setPopupTarget(null);
+      setIsUndocked(true);
+      return;
+    }
+
+    popup.document.title = "AgentEnvelope AI Operator Chat";
+    const base = popup.document.createElement("base");
+    base.href = document.baseURI;
+    popup.document.head.replaceChildren(base);
+    document.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => {
+      popup.document.head.appendChild(node.cloneNode(true));
+    });
+
+    const root = popup.document.createElement("div");
+    root.className = "ai-chat-popout-root";
+    popup.document.body.className = "ai-chat-popout-body";
+    popup.document.body.replaceChildren(root);
+
+    popupRef.current = popup;
+    setPopupTarget(root);
+    setIsUndocked(true);
+    popup.focus();
+
+    popup.addEventListener(
+      "beforeunload",
+      () => {
+        if (popupRef.current !== popup) return;
+        popupRef.current = null;
+        setPopupTarget(null);
+        setIsUndocked(false);
+      },
+      { once: true },
+    );
+  }, []);
+
   useEffect(() => {
     if (!isUndocked) return undefined;
 
+    const popup = popupRef.current;
+    const ownerWindow = popup && !popup.closed ? popup : window;
+    const isPopup = ownerWindow !== window;
     const previousOverflow = document.body.style.overflow;
     const handleKeyDown = (event) => {
-      if (event.key === "Escape") setIsUndocked(false);
+      if (event.key === "Escape") dockChat();
     };
 
-    document.body.style.overflow = "hidden";
-    document.addEventListener("keydown", handleKeyDown);
-    window.requestAnimationFrame(() => promptRef.current?.focus());
+    if (!isPopup) document.body.style.overflow = "hidden";
+    ownerWindow.addEventListener("keydown", handleKeyDown);
+    ownerWindow.requestAnimationFrame(() => promptRef.current?.focus());
 
     return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyDown);
+      if (!isPopup) document.body.style.overflow = previousOverflow;
+      ownerWindow.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isUndocked]);
+  }, [dockChat, isUndocked, popupTarget]);
+
+  useEffect(
+    () => () => {
+      const popup = popupRef.current;
+      popupRef.current = null;
+      if (popup && !popup.closed) popup.close();
+    },
+    [],
+  );
 
   const submitPrompt = () => {
     if (ai?.thinking || !ai?.livePrompt?.trim()) return;
@@ -334,7 +403,7 @@ function AiPromptPanel({ ai, placement = "rail" }) {
     <div
       className={`status-panel ai-prompt-panel ${placement} ${isUndocked ? "undocked" : ""}`}
       role={isUndocked ? "dialog" : undefined}
-      aria-modal={isUndocked ? "true" : undefined}
+      aria-modal={isUndocked && !popupTarget ? "true" : undefined}
       aria-labelledby="ai-operator-chat-title"
     >
       <div className="ai-chat-header">
@@ -346,12 +415,12 @@ function AiPromptPanel({ ai, placement = "rail" }) {
           <button
             className="ai-chat-window-control"
             type="button"
-            onClick={() => setIsUndocked((current) => !current)}
-            aria-label={isUndocked ? "Dock operator chat" : "Undock operator chat"}
-            title={isUndocked ? "Dock operator chat (Esc)" : "Undock operator chat"}
+            onClick={isUndocked ? dockChat : undockChat}
+            aria-label={isUndocked ? "Dock operator chat" : "Pop out operator chat"}
+            title={isUndocked ? "Dock operator chat (Esc)" : "Open chat in a movable window"}
           >
-            {isUndocked ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
-            <span>{isUndocked ? "Dock chat" : "Undock"}</span>
+            {isUndocked ? <Minimize2 size={15} aria-hidden="true" /> : <ExternalLink size={15} aria-hidden="true" />}
+            <span>{isUndocked ? "Dock chat" : "Pop out"}</span>
           </button>
         </div>
         <p>Ask about the live factory or request an action. AgentEnvelope still gates every tool call.</p>
@@ -419,12 +488,16 @@ function AiPromptPanel({ ai, placement = "rail" }) {
     </div>
   );
 
+  if (isUndocked && popupTarget) {
+    return createPortal(chatPanel, popupTarget);
+  }
+
   if (isUndocked && typeof document !== "undefined") {
     return createPortal(
       <div
         className="ai-chat-overlay"
         onMouseDown={(event) => {
-          if (event.target === event.currentTarget) setIsUndocked(false);
+          if (event.target === event.currentTarget) dockChat();
         }}
       >
         {chatPanel}
