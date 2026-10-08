@@ -45,6 +45,7 @@ test("places the manual Factory Ledger beneath the factory floor", async ({ page
 
   const floor = page.locator(".factory-floor");
   const ledger = page.locator(".center-ledger").filter({ hasText: "Factory Ledger" });
+  const rightPanel = page.locator(".right-panel");
   await expect(ledger.getByRole("heading", { name: "Factory Ledger" })).toBeVisible();
   await expect(ledger.locator("details")).toHaveAttribute("open", "");
   await expect(page.locator(".right-panel").getByRole("heading", { name: "Factory Ledger" })).toHaveCount(0);
@@ -54,6 +55,9 @@ test("places the manual Factory Ledger beneath the factory floor", async ({ page
   expect(floorBox).not.toBeNull();
   expect(ledgerBox).not.toBeNull();
   expect(ledgerBox.y).toBeGreaterThanOrEqual(floorBox.y + floorBox.height);
+
+  const rightPanelOrder = await rightPanel.locator(":scope > details > summary h2").allTextContents();
+  expect(rightPanelOrder).toEqual(["Current Record", "Authority Trace", "Web Portal Authority Head", "Hosted Records"]);
 });
 
 test("docks AI chat in the left sidebar and places its open ledger beneath the floor", async ({ page }) => {
@@ -66,6 +70,9 @@ test("docks AI chat in the left sidebar and places its open ledger beneath the f
   await expect(leftPanel.getByRole("heading", { name: "Bedrock Connection" })).toBeVisible();
   await expect(leftPanel.getByRole("heading", { name: "LLM Proposed Action" })).toBeVisible();
   await expect(leftPanel.getByRole("heading", { name: "LLM Intent Stream" })).toBeVisible();
+  await expect(leftPanel.getByRole("heading", { name: "Handled Disruptions" })).toBeVisible();
+  await expect(leftPanel.getByRole("heading", { name: "Hack Robot Commands" })).toBeVisible();
+  await expect(leftPanel.getByRole("heading", { name: "Red Spectre Tests" })).toBeVisible();
   await expect(leftPanel.locator(".ai-intent-stream > summary svg")).toHaveCount(1);
   await expect(page.locator(".center-panel").getByRole("heading", { name: "AI Operator Chat" })).toHaveCount(0);
   await expect(rightPanel.getByRole("heading", { name: "Factory Ledger" })).toHaveCount(0);
@@ -74,7 +81,7 @@ test("docks AI chat in the left sidebar and places its open ledger beneath the f
   await expect(ledger.locator("details")).toHaveAttribute("open", "");
 
   const rightPanelOrder = await rightPanel.locator(":scope > details > summary h2").allTextContents();
-  expect(rightPanelOrder).toEqual(["Current Record", "Authority Trace", "Hosted Records"]);
+  expect(rightPanelOrder).toEqual(["Current Record", "Authority Trace", "Web Portal Authority Head", "Hosted Records"]);
 
   const floorBox = await floor.boundingBox();
   const ledgerBox = await ledger.boundingBox();
@@ -360,4 +367,18 @@ test("operator chat can pop out and dock without losing its input", async ({ pag
   await secondClosePromise;
   await expect(page.getByRole("heading", { name: "AI Operator Chat" })).toBeVisible();
   await expect(page.getByLabel("Request or question")).toHaveValue("Keep this draft");
+});
+
+test("refresh closes the stale undocked chat window", async ({ page }) => {
+  const popupPromise = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "Pop out operator chat" }).click();
+  const popup = await popupPromise;
+  await expect(popup.getByRole("dialog", { name: "AI Operator Chat" })).toBeVisible();
+
+  const closePromise = popup.waitForEvent("close");
+  await page.reload();
+  await closePromise;
+
+  await expect(page.getByRole("heading", { name: "AI Operator Chat" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pop out operator chat" })).toBeVisible();
 });

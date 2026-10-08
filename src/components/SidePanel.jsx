@@ -57,6 +57,8 @@ function SidePanel({
         <AiPromptPanel ai={ai} placement="sidebar" />
         <AiProposedActionPanel action={ai?.proposedAction} />
         <AiIntentStream attempts={ai?.attempts ?? []} />
+        <DisruptionPanel onScenarioBug={onScenarioBug} />
+        <HackConsole consoleState={consoleState} onHackAttempt={onHackAttempt} />
         <AiSpecterTestsPanel ai={ai} />
       </aside>
     );
@@ -91,6 +93,7 @@ function SidePanel({
       <aside className="side-panel right-panel ai-right-panel">
         <CurrentRecordPanel activeRun={activeRun} trolley4Slot={trolley4Slot} />
         <AuthorityTracePanel activeRun={activeRun} />
+        <AuthorityHeadPanel consoleState={consoleState} onPortalAction={onPortalAction} />
         <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
       </aside>
     );
@@ -98,10 +101,10 @@ function SidePanel({
 
   return (
     <aside className="side-panel right-panel">
-      <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
-      <AuthorityHeadPanel consoleState={consoleState} onPortalAction={onPortalAction} />
       <CurrentRecordPanel activeRun={activeRun} trolley4Slot={trolley4Slot} />
       <AuthorityTracePanel activeRun={activeRun} />
+      <AuthorityHeadPanel consoleState={consoleState} onPortalAction={onPortalAction} />
+      <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
     </aside>
   );
 }
@@ -456,6 +459,16 @@ function AiPromptPanel({ ai, placement = "rail" }) {
     },
     [],
   );
+
+  useEffect(() => {
+    const closeUndockedChat = () => {
+      const popup = popupRef.current;
+      if (popup && !popup.closed) popup.close();
+    };
+
+    window.addEventListener("pagehide", closeUndockedChat);
+    return () => window.removeEventListener("pagehide", closeUndockedChat);
+  }, []);
 
   const submitPrompt = () => {
     if (ai?.thinking || !ai?.livePrompt?.trim()) return;
