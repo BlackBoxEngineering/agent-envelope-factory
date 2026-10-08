@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { factoryPlan } from "../factoryConfig.js";
+import { ChatMarkdown } from "./ChatMarkdown.jsx";
 import {
   Activity,
   Bot,
@@ -347,8 +348,31 @@ function AiPromptPanel({ ai, placement = "rail" }) {
     }
 
     popupRef.current = popup;
+    const expectedUrl = new URL(popupUrl);
+    let mounted = false;
+    let retryTimer = null;
+    let mountAttempts = 0;
+
     const mountChat = () => {
-      if (popup.closed || popupRef.current !== popup) return;
+      if (mounted || popup.closed || popupRef.current !== popup) return false;
+
+      let currentUrl;
+      try {
+        currentUrl = new URL(popup.location.href);
+      } catch {
+        return false;
+      }
+      if (
+        currentUrl.origin !== expectedUrl.origin ||
+        currentUrl.pathname !== expectedUrl.pathname ||
+        popup.document.readyState === "loading"
+      ) {
+        return false;
+      }
+
+      mounted = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      popup.removeEventListener("load", mountWhenReady);
 
       popup.document.title = "AgentEnvelope AI Operator Chat";
       const base = popup.document.createElement("base");
@@ -379,9 +403,26 @@ function AiPromptPanel({ ai, placement = "rail" }) {
         },
         { once: true },
       );
+      return true;
     };
 
-    popup.addEventListener("load", mountChat, { once: true });
+    const mountWhenReady = () => {
+      if (mountChat()) return;
+      if (popup.closed || popupRef.current !== popup) return;
+
+      mountAttempts += 1;
+      if (mountAttempts >= 100) {
+        popup.close();
+        popupRef.current = null;
+        setPopupTarget(null);
+        setIsUndocked(true);
+        return;
+      }
+      retryTimer = window.setTimeout(mountWhenReady, 50);
+    };
+
+    popup.addEventListener("load", mountWhenReady);
+    mountWhenReady();
   }, []);
 
   useEffect(() => {
@@ -462,7 +503,7 @@ function AiPromptPanel({ ai, placement = "rail" }) {
         {messages.map((message) => (
           <div key={message.id} className={`ai-chat-message ${message.role}`}>
             <span>{chatMessageLabel(message.role)}</span>
-            <p>{message.text}</p>
+            {message.role === "assistant" ? <ChatMarkdown text={message.text} /> : <p>{message.text}</p>}
           </div>
         ))}
         {ai?.thinking ? (

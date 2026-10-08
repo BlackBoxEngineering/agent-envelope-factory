@@ -180,6 +180,19 @@ test("read-only chat does not cancel an in-flight run", async ({ page }) => {
   await expect(page.getByText(/Run record complete.*loaded trolley4 into the truck/)).toBeVisible();
 });
 
+test("renders Bedrock Markdown as safe structured chat content", async ({ page }) => {
+  await submitPrompt(page, "Format markdown");
+
+  const response = page.locator(".ai-chat-message.assistant").last();
+  await expect(response.getByRole("heading", { name: "What remains valid" })).toBeVisible();
+  await expect(response.getByRole("heading", { name: "Recovery" })).toBeVisible();
+  await expect(response.locator("strong")).toContainText(["formatted authority", "cryptographically verifiable"]);
+  await expect(response.locator("code")).toHaveText("bay5");
+  await expect(response.locator("ol > li")).toHaveCount(2);
+  await expect(response).not.toContainText("**");
+  await expect(response).not.toContainText("##");
+});
+
 test("all AI Red Spectre controls exercise distinct denied boundaries and stop execution", async ({ page }) => {
   await page.getByRole("button", { name: "Start run" }).click();
   await expect(page.getByText(/Authority record .* scoped RobotBot command for bay5/)).toBeVisible();
@@ -233,6 +246,16 @@ test("blocks recovery when no location mismatch exists", async ({ page }) => {
   await page.getByRole("button", { name: "Fix blocker" }).click();
 
   await expect(page.getByText(/Recovery blocked: the visible plan does not currently require/)).toBeVisible();
+});
+
+test("operator chat popout has a dedicated loading shell", async ({ request }) => {
+  const response = await request.get("/operator-chat.html");
+  const body = await response.text();
+
+  expect(response.ok()).toBe(true);
+  expect(body).toContain("operator-chat-loading");
+  expect(body).toContain("Opening AI Operator Chat");
+  expect(body).not.toContain("/src/main.jsx");
 });
 
 test("operator chat can pop out and dock without losing its input", async ({ page }) => {

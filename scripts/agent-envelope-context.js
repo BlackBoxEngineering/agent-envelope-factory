@@ -1,3 +1,11 @@
+import { readFileSync } from "node:fs";
+
+const AGENT_ENVELOPE_DRAFT_01_ID = "draft-mcphillips-agentenvelope-derived-authority-01";
+const AGENT_ENVELOPE_DRAFT_01_XML = readFileSync(
+  new URL(`./${AGENT_ENVELOPE_DRAFT_01_ID}.xml`, import.meta.url),
+  "utf8",
+);
+
 const AGENT_ENVELOPE_SYSTEM_CONTEXT = [
   "AgentEnvelope is a domain-neutral IAM and derived-authority substrate for autonomous systems.",
   "It is not limited to AI agents: a bounded actor may be a bot, service, workflow step, device command, access grant, order, instruction, or another system trusted to act.",
@@ -14,4 +22,31 @@ const AGENT_ENVELOPE_SYSTEM_CONTEXT = [
   "Describe derivation, identities, envelopes, and capabilities as deterministic. Say that the SDK supports signing and verification; do not summarize the model as merely producing deterministic signatures. Hosted API keys authorize service access and are not agent action authority.",
 ].join("\n");
 
-export { AGENT_ENVELOPE_SYSTEM_CONTEXT };
+const AGENT_ENVELOPE_DRAFT_01_CONTEXT = [
+  `The following reference is the informational AgentEnvelope Internet-Draft ${AGENT_ENVELOPE_DRAFT_01_ID}.`,
+  "Use it for AgentEnvelope terminology, architecture, legitimacy, delegation, verification, and the manufacturing example.",
+  "For claims about this live factory run, the current visible factory state and recent operator conversation take precedence over the draft.",
+  "Do not claim that an optional or illustrative draft feature occurred in the simulator unless the visible state reports it.",
+  "Do not infer the cause of an invalid verification result when the supplied state does not include its reason.",
+  `<agentenvelope-internet-draft id="${AGENT_ENVELOPE_DRAFT_01_ID}">`,
+  AGENT_ENVELOPE_DRAFT_01_XML,
+  "</agentenvelope-internet-draft>",
+].join("\n");
+
+const DIRECT_FACTORY_ACTION = /^\s*(?:please\s+)?(?:start|begin|stop|move|reset|set|slow|speed|fix|recover|reroute|install|approve|attest|pick\s*up)\b/i;
+const EXPLANATORY_REQUEST = /(?:^|[.!?]\s*)(?:please\s+)?(?:what|why|how|explain|describe|summarize|define|tell\s+me\s+about)\b/i;
+const AGENT_ENVELOPE_TOPIC = /\b(?:agent\s*envelope|sdk|portal|vault|domain|delegate|legitimacy|authority|verification|warning|ledger|evidence|plannerbot|dispatchauthority)\b/i;
+
+function shouldAttachAgentEnvelopeDraft({ prompt, presetId } = {}) {
+  if (presetId) return false;
+  const text = String(prompt ?? "").trim();
+  if (!text || DIRECT_FACTORY_ACTION.test(text)) return false;
+  return EXPLANATORY_REQUEST.test(text) || AGENT_ENVELOPE_TOPIC.test(text);
+}
+
+export {
+  AGENT_ENVELOPE_DRAFT_01_CONTEXT,
+  AGENT_ENVELOPE_DRAFT_01_ID,
+  AGENT_ENVELOPE_SYSTEM_CONTEXT,
+  shouldAttachAgentEnvelopeDraft,
+};

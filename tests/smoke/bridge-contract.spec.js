@@ -1,7 +1,12 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { AGENT_ENVELOPE_SYSTEM_CONTEXT } from "../../scripts/agent-envelope-context.js";
+import {
+  AGENT_ENVELOPE_DRAFT_01_CONTEXT,
+  AGENT_ENVELOPE_DRAFT_01_ID,
+  AGENT_ENVELOPE_SYSTEM_CONTEXT,
+  shouldAttachAgentEnvelopeDraft,
+} from "../../scripts/agent-envelope-context.js";
 import { AI_OPERATOR_CONTRACT_VERSION, authorityPolicy, factoryPlan, redSpectreToolCalls, slots } from "../../src/factoryConfig.js";
 
 const PORT = 8797;
@@ -85,4 +90,22 @@ test("production bridge gives Bedrock canonical AgentEnvelope product context", 
   expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("begin by stating that AgentEnvelope is a domain-neutral IAM and derived-authority spine for autonomous systems");
   expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("optional hosted authority head and managed governance service");
   expect(AGENT_ENVELOPE_SYSTEM_CONTEXT).toContain("Hosted API keys authorize service access and are not agent action authority");
+});
+
+test("Bedrock receives draft 01 for explanations but not direct factory actions", async () => {
+  const bridgeSource = await readFile("scripts/ai-operator-bridge.js", "utf8");
+
+  expect(AGENT_ENVELOPE_DRAFT_01_ID).toBe("draft-mcphillips-agentenvelope-derived-authority-01");
+  expect(AGENT_ENVELOPE_DRAFT_01_CONTEXT).toContain("AgentEnvelope: Derived Authority and Legitimacy for Autonomous Systems");
+  expect(AGENT_ENVELOPE_DRAFT_01_CONTEXT).toContain("IAM for Autonomous Systems");
+  expect(AGENT_ENVELOPE_DRAFT_01_CONTEXT).toContain("Manufacturing Legitimacy Example");
+  expect(AGENT_ENVELOPE_DRAFT_01_CONTEXT).toContain("current visible factory state and recent operator conversation take precedence");
+  expect(bridgeSource).toContain("attachDraft ? [{ text: AGENT_ENVELOPE_DRAFT_01_CONTEXT }] : []");
+  expect(bridgeSource).toContain("begin with warning messages in recentOperatorConversation");
+
+  expect(shouldAttachAgentEnvelopeDraft({ prompt: "Explain the warnings" })).toBe(true);
+  expect(shouldAttachAgentEnvelopeDraft({ prompt: "What does the portal add?" })).toBe(true);
+  expect(shouldAttachAgentEnvelopeDraft({ prompt: "Tell me about mint delegates" })).toBe(true);
+  expect(shouldAttachAgentEnvelopeDraft({ prompt: "Start the signed factory run" })).toBe(false);
+  expect(shouldAttachAgentEnvelopeDraft({ prompt: "Explain authority", presetId: "helpful-overreach" })).toBe(false);
 });

@@ -6,23 +6,30 @@
     <link rel="icon" type="image/png" href="/agent-envelope-factory-symbol.png" />
     <title>AgentEnvelope AI Operator Chat</title>
     <style>
-      html,
-      body {
-        margin: 0;
-        min-height: 100%;
-        background: #08090d;
-        color: #dff3f8;
-        font-family: system-ui, sans-serif;
+      :root {
+        color-scheme: dark;
       }
 
-      body::before {
-        content: "Opening AgentEnvelope AI Operator Chat…";
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #08090d;
+        color: #dff3f8;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+
+      .operator-chat-loading {
         display: grid;
         min-height: 100vh;
         place-items: center;
-        color: #f2b85b;
+        color: #36d8ff;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
       }
     </style>
   </head>
-  <body></body>
+  <body>
+    <div class="operator-chat-loading" role="status">Opening AI Operator Chat...</div>
+  </body>
 </html>

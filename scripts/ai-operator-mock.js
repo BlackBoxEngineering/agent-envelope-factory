@@ -38,6 +38,24 @@ function responseFor(body) {
   const requestedBay = prompt.match(/bay\s*([1-8])/)?.[1];
   const redSpectreToolCall = redSpectreToolCalls[body.presetId];
 
+  if (prompt.includes("format markdown")) {
+    return {
+      text: [
+        "This answer contains **formatted authority** context.",
+        "",
+        "## What remains valid",
+        "",
+        "The `bay5` signature remains **cryptographically verifiable**.",
+        "",
+        "## Recovery",
+        "",
+        "1. Evidence authorities attest the current bay.",
+        "2. PlannerBot requests a fresh scoped command.",
+      ].join("\n"),
+      toolCall: null,
+    };
+  }
+
   if (redSpectreToolCall) {
     return {
       text: `Mock Bedrock accepted the ${body.presetId} pressure prompt and proposed ${redSpectreToolCall.name}; AgentEnvelope must decide whether it is authorized.`,
