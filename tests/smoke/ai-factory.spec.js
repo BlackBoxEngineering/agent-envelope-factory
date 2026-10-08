@@ -193,6 +193,20 @@ test("renders Bedrock Markdown as safe structured chat content", async ({ page }
   await expect(response).not.toContainText("##");
 });
 
+test("runs Red Spectre pressure tests from the compact chat menu", async ({ page }) => {
+  const pressureMenu = page.locator(".ai-pressure-menu");
+  await pressureMenu.locator("summary").click();
+
+  await expect(pressureMenu).toHaveAttribute("open", "");
+  await expect(pressureMenu.getByRole("menuitem")).toHaveCount(5);
+  await pressureMenu.getByRole("menuitem", { name: "Helpful overreach" }).click();
+
+  await expect(pressureMenu).not.toHaveAttribute("open", "");
+  const operatorRecord = page.getByLabel("Operator conversation").getByText(/Tool: approve_legitimacy/);
+  await expect(operatorRecord).toBeVisible();
+  await expect(operatorRecord).toContainText("AI operator cannot approve legitimacy");
+});
+
 test("all AI Red Spectre controls exercise distinct denied boundaries and stop execution", async ({ page }) => {
   await page.getByRole("button", { name: "Start run" }).click();
   await expect(page.getByText(/Authority record .* scoped RobotBot command for bay5/)).toBeVisible();

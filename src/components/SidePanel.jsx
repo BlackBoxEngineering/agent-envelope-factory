@@ -8,6 +8,7 @@ import {
   BrainCircuit,
   Bug,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   ExternalLink,
   FlaskConical,
@@ -309,6 +310,7 @@ function AiPromptPanel({ ai, placement = "rail" }) {
   const quickActions = (ai?.presets ?? [])
     .filter((preset) => preset.group === "Factory control prompts")
     .filter((preset) => ["start-run", "move-trolley", "fix-blocker", "stop-line"].includes(preset.id));
+  const pressureActions = (ai?.presets ?? []).filter((preset) => preset.group === "Red Spectre pressure tests");
 
   useEffect(() => {
     const thread = threadRef.current;
@@ -497,6 +499,36 @@ function AiPromptPanel({ ai, placement = "rail" }) {
               {action.title}
             </button>
           ))}
+          <details className={`ai-pressure-menu ${ai?.thinking ? "disabled" : ""}`}>
+            <summary
+              aria-disabled={ai?.thinking ? "true" : undefined}
+              onClick={(event) => {
+                if (ai?.thinking) event.preventDefault();
+              }}
+              title="Run a Red Spectre pressure test"
+            >
+              <Terminal size={13} aria-hidden="true" />
+              <span>Pressure test</span>
+              <ChevronDown size={12} aria-hidden="true" />
+            </summary>
+            <div className="ai-pressure-menu-popover" role="menu" aria-label="Red Spectre pressure tests">
+              {pressureActions.map((attack) => (
+                <button
+                  key={attack.id}
+                  type="button"
+                  role="menuitem"
+                  disabled={ai?.thinking}
+                  title={attack.prompt}
+                  onClick={(event) => {
+                    event.currentTarget.closest("details")?.removeAttribute("open");
+                    ai?.onPreset(attack.id);
+                  }}
+                >
+                  {attack.title}
+                </button>
+              ))}
+            </div>
+          </details>
         </div>
       </div>
       <div ref={threadRef} className="ai-chat-thread" aria-live="polite" aria-label="Operator conversation">

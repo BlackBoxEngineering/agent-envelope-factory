@@ -2358,8 +2358,12 @@ button {
   gap: 6px;
 }
 
-.ai-chat-quick-actions button {
+.ai-chat-quick-actions > button,
+.ai-pressure-menu > summary {
   min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 5px 9px;
   border: 1px solid color-mix(in srgb, var(--ae-cyan) 28%, #30323a);
   border-radius: 999px;
@@ -2370,13 +2374,83 @@ button {
   font-weight: 800;
 }
 
-.ai-chat-quick-actions button:hover:not(:disabled) {
+.ai-chat-quick-actions > button:hover:not(:disabled),
+.ai-pressure-menu > summary:hover,
+.ai-pressure-menu[open] > summary {
   border-color: var(--ae-gold);
   background: color-mix(in srgb, var(--ae-gold) 12%, #101116);
   color: var(--ae-gold-light);
 }
 
-.ai-chat-quick-actions button:disabled {
+.ai-chat-quick-actions > button:disabled,
+.ai-pressure-menu.disabled > summary {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.ai-pressure-menu {
+  position: relative;
+}
+
+.ai-pressure-menu > summary {
+  list-style: none;
+}
+
+.ai-pressure-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-pressure-menu > summary:focus-visible {
+  outline: 2px solid var(--ae-cyan);
+  outline-offset: 2px;
+}
+
+.ai-pressure-menu > summary svg:last-child {
+  transition: transform 120ms ease;
+}
+
+.ai-pressure-menu[open] > summary svg:last-child {
+  transform: rotate(180deg);
+}
+
+.ai-pressure-menu-popover {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(270px, calc(100vw - 48px));
+  display: grid;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid color-mix(in srgb, var(--ae-red) 48%, #30323a);
+  border-radius: 6px;
+  background: color-mix(in srgb, #101116 96%, transparent);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.45);
+}
+
+.ai-pressure-menu-popover button {
+  width: 100%;
+  min-height: 32px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ae-ink);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+  text-align: left;
+}
+
+.ai-pressure-menu-popover button:hover:not(:disabled),
+.ai-pressure-menu-popover button:focus-visible {
+  border-color: color-mix(in srgb, var(--ae-red) 62%, white);
+  background: color-mix(in srgb, var(--ae-red) 14%, #172231);
+  color: white;
+  outline: none;
+}
+
+.ai-pressure-menu-popover button:disabled {
   cursor: wait;
   opacity: 0.5;
 }
