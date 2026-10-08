@@ -879,7 +879,9 @@ function ActorFlowPanel({ activeRun, ai, isAiControlled, phase, status }) {
     role: "Maintains and repairs the plan",
     icon: Route,
     state:
-      phase === "replanning"
+      phase === "stopped"
+        ? "paused"
+        : phase === "replanning"
         ? "reissued"
         : reasonCode.startsWith("ai.") || reasonCode.startsWith("intent.") || reasonCode.startsWith("supply_chain.")
           ? "blocked"
@@ -887,12 +889,15 @@ function ActorFlowPanel({ activeRun, ai, isAiControlled, phase, status }) {
             ? "planning"
             : "idle",
     active:
+      phase === "stopped" ||
       plannerNeedsRecovery ||
       reasonCode.startsWith("ai.") ||
       reasonCode.startsWith("intent.") ||
       reasonCode.startsWith("supply_chain."),
     operation:
-      phase === "replanning"
+      phase === "stopped"
+        ? "plan held by the local safety interlock"
+        : phase === "replanning"
         ? `fresh command targets ${commandTarget}`
         : reasonCode.startsWith("ai.") || reasonCode.startsWith("intent.") || reasonCode.startsWith("supply_chain.")
           ? `operator proposal gated: ${reasonCode}`
@@ -913,11 +918,13 @@ function ActorFlowPanel({ activeRun, ai, isAiControlled, phase, status }) {
       name: "Robot Bot",
       role: "Executes scoped action",
       icon: Bot,
-      state: phase === "denied" ? "blocked" : phase === "moving" || phase === "replanning" ? "working" : phase === "complete" ? "done" : "standby",
-      active: ["moving", "reviewing", "replanning", "complete", "denied"].includes(phase),
+      state: phase === "denied" ? "blocked" : phase === "stopped" ? "stopped" : phase === "moving" || phase === "replanning" ? "working" : phase === "complete" ? "done" : "standby",
+      active: ["moving", "reviewing", "replanning", "complete", "denied", "stopped"].includes(phase),
       operation:
         phase === "denied"
           ? `blocked by ${reasonCode}`
+          : phase === "stopped"
+            ? "paused by the local safety interlock"
           : phase === "replanning"
           ? `rerouting to ${commandTarget}`
           : phase === "reviewing"
@@ -935,7 +942,9 @@ function ActorFlowPanel({ activeRun, ai, isAiControlled, phase, status }) {
       state: cryptoBlocked ? "bypassed" : status.evidence,
       active: cryptoBlocked || ["checking", "sufficient", "insufficient"].includes(status.evidence),
       operation:
-        cryptoBlocked
+        phase === "stopped"
+          ? "evidence state retained when execution stopped"
+          : cryptoBlocked
           ? "not reached; signature/envelope failed first"
           : disruptionReview
             ? "refreshing evidence while the run continues"
@@ -954,7 +963,9 @@ function ActorFlowPanel({ activeRun, ai, isAiControlled, phase, status }) {
       state: status.legitimacy,
       active: phase === "reviewing" || ["pending", "allowed", "denied"].includes(status.legitimacy),
       operation:
-        cryptoBlocked
+        phase === "stopped"
+          ? "last legitimacy state unchanged; execution stopped locally"
+          : cryptoBlocked
           ? `failed before execution: ${reasonCode}`
           : replayBlocked
             ? "replay denied by governed ledger state"

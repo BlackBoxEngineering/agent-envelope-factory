@@ -106,6 +106,18 @@ function responseFor(body) {
     };
   }
 
+  if (/\bstop\b.*\b(line|factory)\b/.test(prompt)) {
+    return {
+      text: "Mock operator recorded the local factory safety stop.",
+      toolCall: {
+        name: "stop_line",
+        input: {
+          reason: "Deterministic safety-stop smoke test.",
+        },
+      },
+    };
+  }
+
   return {
     text: `The active plan is to collect trolley4 from the signed target, verify reality independently, and load it into the truck. Current phase: ${body.state?.phase ?? "unknown"}.`,
     toolCall: null,
@@ -145,6 +157,9 @@ const server = createServer(async (req, res) => {
     }
     if (body.presetId === "supply-chain-pressure") {
       await new Promise((resolve) => setTimeout(resolve, 3_500));
+    }
+    if (body.presetId === "stop-line") {
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
     }
     send(res, 200, {
       provider: "smoke-test",

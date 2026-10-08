@@ -83,6 +83,24 @@ test("docks AI chat in the left sidebar and places its open ledger beneath the f
   expect(ledgerBox.y).toBeGreaterThanOrEqual(floorBox.y + floorBox.height);
 });
 
+test("keeps the prompt and reset actions inside the docked chat card", async ({ page }) => {
+  const chat = page.locator(".ai-prompt-panel.sidebar");
+  const formActions = chat.locator(".ai-form-actions");
+  const proposedAction = page.locator(".ai-action-panel");
+
+  await expect(chat.getByRole("button", { name: "Send" })).toBeVisible();
+  await expect(chat.getByRole("button", { name: "Reset demo" })).toBeVisible();
+
+  const chatBox = await chat.boundingBox();
+  const actionsBox = await formActions.boundingBox();
+  const nextPanelBox = await proposedAction.boundingBox();
+  expect(chatBox).not.toBeNull();
+  expect(actionsBox).not.toBeNull();
+  expect(nextPanelBox).not.toBeNull();
+  expect(actionsBox.y + actionsBox.height).toBeLessThanOrEqual(chatBox.y + chatBox.height);
+  expect(nextPanelBox.y).toBeGreaterThanOrEqual(chatBox.y + chatBox.height);
+});
+
 test("LLM Intent Stream opens into reserved sidebar space and collapses cleanly", async ({ page }) => {
   const intentStream = page.locator(".ai-intent-stream");
   const intentSummary = intentStream.locator("summary");
@@ -178,6 +196,48 @@ test("read-only chat does not cancel an in-flight run", async ({ page }) => {
   await submitPrompt(page, "What is the current plan?");
   await expect(page.getByText(/active plan is to collect trolley4/)).toBeVisible();
   await expect(page.getByText(/Run record complete.*loaded trolley4 into the truck/)).toBeVisible();
+});
+
+test("Stop line freezes RobotBot immediately while Bedrock records the request", async ({ page }) => {
+  await page.getByRole("button", { name: "Start run" }).click();
+  await expect(page.getByText(/Authority record .* scoped RobotBot command for bay5/)).toBeVisible();
+
+  const robot = page.locator(".factory-floor > .robot");
+  await page.getByRole("button", { name: "Stop line" }).click();
+  await expect(robot).toHaveClass(/stopped/, { timeout: 500 });
+  await expect(page.getByText(/Safety stop engaged immediately/)).toBeVisible();
+
+  const stoppedPosition = await robot.boundingBox();
+  expect(stoppedPosition).not.toBeNull();
+  await page.waitForTimeout(2_500);
+  const laterPosition = await robot.boundingBox();
+  expect(laterPosition).not.toBeNull();
+  expect(Math.abs(laterPosition.x - stoppedPosition.x)).toBeLessThan(1);
+  expect(Math.abs(laterPosition.y - stoppedPosition.y)).toBeLessThan(1);
+
+  await expect(page.getByText(/Safety stop recorded.*local interlock had already paused RobotBot immediately/)).toBeVisible();
+  await expect(page.getByText(/Run record complete|Recovery complete/)).toHaveCount(0);
+  const actors = page.locator(".actor-flow");
+  await expect(actors.getByText("paused by the local safety interlock", { exact: true })).toBeVisible();
+  await expect(actors.getByText("last legitimacy state unchanged; execution stopped locally", { exact: true })).toBeVisible();
+  await expect(actors.getByText(/blocked by safety\.stop_line/)).toHaveCount(0);
+});
+
+test("PlannerBot can recover a trolley mismatch staged after a safety stop", async ({ page }) => {
+  await page.getByRole("button", { name: "Start run" }).click();
+  await expect(page.getByText(/Authority record .* scoped RobotBot command for bay5/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Stop line" }).click();
+  await expect(page.locator(".factory-floor > .robot")).toHaveClass(/stopped/);
+  await expect(page.getByText(/Safety stop recorded.*local interlock had already paused RobotBot immediately/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Move trolley" }).click();
+  await expect(page.getByRole("button", { name: "trolley4 bay7" })).toBeVisible();
+  await expect(page.getByText(/Recorded staged trolley move to bay7/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Fix blocker" }).click();
+  await expect(page.getByText(/Recovery record .* PlannerBot selected bay7 from fresh evidence/)).toBeVisible();
+  await expect(page.getByText(/Recovery complete.*loaded trolley4 from bay7 under the corrected scoped command/)).toBeVisible();
 });
 
 test("renders Bedrock Markdown as safe structured chat content", async ({ page }) => {

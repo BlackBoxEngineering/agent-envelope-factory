@@ -308,6 +308,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     : `Factory ready. Run the signed ${INITIAL_TARGET} command, then move trolley4 while RobotBot is en route.`;
   const floorRef = useRef(null);
   const timersRef = useRef([]);
+  const latestPhaseRef = useRef("ready");
   const plannerRecoveryRef = useRef(null);
   const plannerRecoveryCounterRef = useRef(1);
   const latestTrolleysRef = useRef(initialTrolleys);
@@ -384,6 +385,10 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
   useEffect(() => refreshAiProviderStatus(), [refreshAiProviderStatus]);
 
+  useEffect(() => {
+    latestPhaseRef.current = phase;
+  }, [phase]);
+
   const setTrolleys = useCallback((updater) => {
     setTrolleysState((current) => {
       const next = typeof updater === "function" ? updater(current) : updater;
@@ -393,7 +398,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
   }, []);
 
   const trolley4 = trolleys.find((trolley) => trolley.id === "trolley4");
-  const canRun = phase === "ready" || phase === "complete" || phase === "denied";
+  const canRun = phase === "ready" || phase === "complete" || phase === "denied" || phase === "stopped";
   const activeTarget = activeRun?.command.args.bayId;
   const observedTrolleySlot = trolley4?.slot ?? "unknown";
   const hasLocationMismatch = Boolean(
@@ -510,6 +515,29 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     setRobot((current) => ({ ...current, x, y }));
   }, []);
 
+  const latchSafetyStop = useCallback(() => {
+    const currentPhase = latestPhaseRef.current;
+    if (currentPhase === "complete") return "complete";
+    if (currentPhase === "stopped") return "stopped";
+    if (!["moving", "reviewing", "replanning"].includes(currentPhase)) return "idle";
+
+    clearTimers();
+    freezeRobotPosition();
+    latestPhaseRef.current = "stopped";
+    setPhase("stopped");
+    setStatus((current) => ({
+      ...current,
+      reasonCode: "safety.stop_line",
+      message: "The local safety interlock stopped the line immediately. Existing authority and legitimacy state were not changed, and no new authority was minted.",
+    }));
+    setConsoleState((current) => ({
+      ...current,
+      hack: "$ safety-interlock --stop-line\nsimulator execution: stopped\nauthority mint: none",
+    }));
+    addEvent("warn", "Local safety interlock stopped the line immediately; no command authority was minted.");
+    return "stopped";
+  }, [addEvent, clearTimers, freezeRobotPosition]);
+
   const moveTrolley = useCallback(
     (id, slotId) => {
       setTrolleys((current) =>
@@ -526,6 +554,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
   const reset = useCallback(() => {
     clearTimers();
+    latestPhaseRef.current = "ready";
     setTrolleys(initialTrolleys);
     setRobot(initialRobot);
     setPhase("ready");
@@ -721,13 +750,44 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         return;
       }
       const isRedSpectrePreset = preset?.group === "Red Spectre pressure tests";
+      const isImmediateSafetyStop = presetId === "stop-line";
+      let immediateStopResult = null;
+      let requestState = aiVisibleState;
 
       setDrag(null);
       setAiPrompt("");
       addAiMessage("prompt", prompt);
-      if (isRedSpectrePreset) {
+      if (isImmediateSafetyStop) {
+        immediateStopResult = latchSafetyStop();
+        if (immediateStopResult === "stopped") {
+          const stoppedStatus = {
+            ...aiVisibleState.status,
+            reasonCode: "safety.stop_line",
+            message: "The local safety interlock stopped the line immediately. Bedrock is recording the operator intent after the stop.",
+          };
+          requestState = {
+            ...aiVisibleState,
+            phase: "stopped",
+            status: stoppedStatus,
+            robot: {
+              ...aiVisibleState.robot,
+              executionState: "stopped",
+            },
+            factoryPlan: {
+              ...aiVisibleState.factoryPlan,
+              current: {
+                ...aiVisibleState.factoryPlan.current,
+                phase: "stopped",
+                nextRequiredAction: "The line is stopped by the local safety interlock; inspect or reset before starting another run.",
+              },
+            },
+          };
+          addAiMessage("warning", "Safety stop engaged immediately. RobotBot was frozen before Bedrock processed the operator request; no new authority was minted.");
+        }
+      } else if (isRedSpectrePreset) {
         clearTimers();
         freezeRobotPosition();
+        latestPhaseRef.current = "denied";
         setPhase("denied");
         setStatus((current) => ({
           ...current,
@@ -747,7 +807,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       let bedrockResult;
       let proposal;
       try {
-        bedrockResult = await requestBedrockOperator({ prompt, presetId, state: aiVisibleState });
+        bedrockResult = await requestBedrockOperator({ prompt, presetId, state: requestState });
         if (bedrockResult.text) {
           addAiMessage("assistant", bedrockResult.text);
         }
@@ -829,28 +889,32 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         }
 
         if (proposal.tool === "stop_line") {
-          clearTimers();
-          freezeRobotPosition();
+          const stopResult = immediateStopResult ?? latchSafetyStop();
+          const boundaryResult =
+            stopResult === "complete"
+              ? "Safety stop received after completion; no active execution or authority state changed."
+              : stopResult === "idle"
+                ? "Safety stop recorded; no active execution or authority state changed."
+                : "Safety stop allowed; the local interlock paused execution without minting new authority.";
           recordAiAttempt(proposal, {
             prompt,
             status: "allowed",
-            boundaryResult: "Safety stop allowed; execution pauses without minting new authority.",
+            boundaryResult,
             hostedReceipt: "none",
             reasonCode: "safety.stop_line",
           });
-          setPhase("denied");
-          setStatus((current) => ({
-            ...current,
-            legitimacy: "denied",
-            reasonCode: "safety.stop_line",
-            message: "AI operator stopped the line. No new command authority was minted.",
-          }));
-          setConsoleState((current) => ({
-            ...current,
-            hack: "$ ai-operator --stop-line\nsimulator control: allowed\nauthority mint: none",
-          }));
-          reportAiToolOutcome("warning", proposal, "Safety stop recorded. I paused the line without minting new authority.");
-          addEvent("warn", "AI operator stopped the line as a simulator safety control.");
+          reportAiToolOutcome(
+            "warning",
+            proposal,
+            stopResult === "complete"
+              ? "Safety stop recorded after completion. There was no active execution to stop, so the completed state was preserved."
+              : stopResult === "idle"
+                ? "Safety stop recorded. There was no active execution to stop, and no authority was minted."
+                : "Safety stop recorded. The local interlock had already paused RobotBot immediately without minting new authority.",
+          );
+          if (stopResult !== "stopped") {
+            addEvent("info", boundaryResult);
+          }
           return;
         }
 
@@ -1079,7 +1143,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         const signedTarget = activeRun?.command.args.bayId;
         const recoveryRequired = Boolean(
           activeRun &&
-          ["moving", "reviewing", "replanning"].includes(phase) &&
+          ["moving", "reviewing", "replanning", "stopped"].includes(phase) &&
           authorityPolicy.bays.includes(confirmedSlot) &&
           confirmedSlot !== signedTarget &&
           !robot.carrying,
@@ -1319,6 +1383,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       clearTimers,
       currentTrolleySlot,
       freezeRobotPosition,
+      latchSafetyStop,
       moveRobotTo,
       moveTrolley,
       phase,
