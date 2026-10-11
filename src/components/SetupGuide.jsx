@@ -10,24 +10,32 @@ const DELEGATES = [
     file: "mint-delegate.json",
     envPrefix: "ROBOT",
     delegate: robotDelegate,
+    requiredOperations: ["pickUp", "routeTrolley"],
+    requiredResources: ["bay:*", "trolley:*"],
   },
   {
     title: "Evidence attestation authority",
     file: "mint-delegate.evidence.json",
     envPrefix: "EVIDENCE",
     delegate: evidenceDelegate,
+    requiredOperations: ["attest-location", "attest-safety"],
+    requiredResources: ["bay:*", "trolley:*", "dock:*"],
   },
   {
     title: "Governance repair authority",
     file: "mint-delegate.governance.json",
     envPrefix: "GOVERNANCE",
     delegate: governanceDelegate,
+    requiredOperations: ["approve-legitimacy", "suspend-legitimacy", "repair-state"],
+    requiredResources: ["delegate:*", "record:*", "command:*"],
   },
   {
     title: "PlannerBot reroute authority",
     file: "mint-delegate.planner.json",
     envPrefix: "PLANNER",
     delegate: plannerDelegate,
+    requiredOperations: ["propose-reroute", "request-correction"],
+    requiredResources: ["bay:*", "trolley:*", "command:*"],
   },
 ];
 
@@ -160,6 +168,9 @@ function SetupCard({ children, icon: Icon, title }) {
 
 function DelegateRow({ item }) {
   const { delegate } = item;
+  const missingOperations = item.requiredOperations.filter((operation) => !delegate.allowedOperations.includes(operation));
+  const missingResources = item.requiredResources.filter((resource) => !delegate.allowedResources.includes(resource));
+  const ready = missingOperations.length === 0 && missingResources.length === 0;
 
   return (
     <article className="delegate-row">
@@ -170,17 +181,23 @@ function DelegateRow({ item }) {
       </div>
       <div>
         <small>Operations</small>
-        <p>{delegate.allowedOperations.join(", ")}</p>
+        <p>{item.requiredOperations.join(", ")}</p>
       </div>
       <div>
         <small>Resources</small>
-        <p>{delegate.allowedResources.join(", ")}</p>
+        <p>{item.requiredResources.join(", ")}</p>
       </div>
       <div>
         <small>Legitimacy</small>
         <p>{delegate.legitimacyRef?.legitimacyId ?? "not attached"}</p>
       </div>
-      <CheckCircle2 size={18} aria-label="Configured" />
+      {ready ? (
+        <CheckCircle2 size={18} aria-label="Configured" />
+      ) : (
+        <span className="delegate-scope-warning" title={[...missingOperations, ...missingResources].join(", ")}>
+          Reissue
+        </span>
+      )}
     </article>
   );
 }

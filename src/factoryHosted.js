@@ -274,6 +274,8 @@ class HostedTrailPublishError extends Error {
 }
 
 async function publishHostedFactoryCommand(config, command, options = {}) {
+  const readiness = hostedCommandStatus(config, command);
+  if (!readiness.ready) throw new Error(readiness.message);
   const existingRecords = Array.isArray(options.existingRecords) ? options.existingRecords : [];
   const completed = new Map(existingRecords.map((record) => [record.roleId, record]));
 
@@ -461,18 +463,22 @@ async function publishHostedRoleAction({ config, role, command, action, order })
 
 function buildRoleAction(role, command, results) {
   const bayId = command.args?.bayId ?? factoryPlan.command.initialTarget;
+  const destinationId = command.args?.destinationId;
   const trolleyId = command.args?.trolleyId ?? "trolley4";
   const commandId = command.commandId ?? `cmd-${trolleyId}-${bayId}`;
   const robotRecord = results.find((item) => item.roleId === "robot")?.record;
+  const isParcelRoute = command.operation === "routeTrolley" && Boolean(destinationId);
+  const routeBays = isParcelRoute ? [`bay:${bayId}`, `bay:${destinationId}`] : [`bay:${bayId}`];
 
   if (role.id === "robot") {
     return {
-      operation: "pickUp",
-      resources: [`bay:${bayId}`, `trolley:${trolleyId}`],
+      operation: isParcelRoute ? "routeTrolley" : "pickUp",
+      resources: [...routeBays, `trolley:${trolleyId}`],
       payload: rolePayload(role, command, {
-        intent: "execute-pickup",
+        intent: isParcelRoute ? "execute-parcel-route" : "execute-pickup",
         commandId,
         bayId,
+        ...(isParcelRoute ? { destinationId } : {}),
         trolleyId,
       }),
     };
@@ -481,13 +487,16 @@ function buildRoleAction(role, command, results) {
   if (role.id === "evidence") {
     return {
       operation: "attest-location",
-      resources: [`bay:${bayId}`, `trolley:${trolleyId}`],
+      resources: [...routeBays, `trolley:${trolleyId}`],
       payload: rolePayload(role, command, {
-        intent: "attest-trolley-location",
+        intent: isParcelRoute ? "attest-parcel-route-state" : "attest-trolley-location",
         commandId,
         bayId,
+        ...(isParcelRoute ? { destinationId } : {}),
         trolleyId,
-        observation: `${trolleyId} observed at ${bayId}`,
+        observation: isParcelRoute
+          ? `${trolleyId} observed at ${bayId} with destination ${destinationId}`
+          : `${trolleyId} observed at ${bayId}`,
       }),
     };
   }
@@ -504,6 +513,7 @@ function buildRoleAction(role, command, results) {
         intent: "repair-or-confirm-legitimacy",
         commandId,
         bayId,
+        ...(isParcelRoute ? { destinationId } : {}),
         trolleyId,
         relatedRecordId: robotRecord?.recordId ?? null,
       }),
@@ -512,15 +522,49 @@ function buildRoleAction(role, command, results) {
 
   return {
     operation: "propose-reroute",
-    resources: [`bay:${bayId}`, `trolley:${trolleyId}`, `command:${commandId}`],
+    resources: [...routeBays, `trolley:${trolleyId}`, `command:${commandId}`],
     payload: rolePayload(role, command, {
       intent: "propose-reroute",
       commandId,
       bayId,
+      ...(isParcelRoute ? { destinationId } : {}),
       trolleyId,
       relatedRecordId: robotRecord?.recordId ?? null,
     }),
   };
+}
+
+function hostedCommandStatus(config, command) {
+  const base = hostedConfigStatus(config);
+  if (!base.ready || !command) return base;
+
+  for (const role of ROLE_DEFINITIONS) {
+    const delegate = stripDelegateMetadata(role.delegate);
+    const action = buildRoleAction(role, command, []);
+    if (!delegate.allowedOperations?.includes(action.operation)) {
+      return {
+        ready: false,
+        label: "scope-required",
+        message: `${role.label} delegate must allow ${action.operation}. Reissue that delegate with the additional operation before hosted publication.`,
+      };
+    }
+    const unsupported = action.resources.find((resource) =>
+      !(delegate.allowedResources ?? []).some((allowed) => resourceMatches(allowed, resource)));
+    if (unsupported) {
+      return {
+        ready: false,
+        label: "scope-required",
+        message: `${role.label} delegate does not allow ${unsupported}. Reissue that delegate with the required resource scope.`,
+      };
+    }
+  }
+
+  return base;
+}
+
+function resourceMatches(allowed, requested) {
+  if (allowed === "*" || allowed === requested) return true;
+  return allowed.endsWith("*") && requested.startsWith(allowed.slice(0, -1));
 }
 
 function rolePayload(role, command, detail) {
@@ -609,6 +653,7 @@ async function hostedJson(url, init) {
 export {
   clearHostedConfig,
   hostedConfigStatus,
+  hostedCommandStatus,
   hostedRoleSummaries,
   initialHostedConfig,
   publishHostedFactoryCommand,

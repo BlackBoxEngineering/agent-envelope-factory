@@ -824,6 +824,17 @@ function HostedRecordsPanel({ activeRun, hosted }) {
           ))}
         </div>
         <p className="hosted-message">{status.message}</p>
+        {activeRun?.hostedRecords?.length > 0 && (
+          <ul className="hosted-published-list" aria-label="Published hosted role records">
+            {activeRun.hostedRecords.map((record) => (
+              <li key={`${record.role}-${record.recordId}`}>
+                <span>{record.role}</span>
+                <code>{record.recordId}</code>
+                <em className={record.valid ? "valid" : "invalid"}>{record.valid ? "verified" : "invalid"}</em>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="button-grid hosted-actions">
           <button type="button" onClick={hosted?.onSave} title="Save hosted settings in this browser session">
             Save session
@@ -1121,3 +1132,5 @@ function Check({ label, value }) {
     </div>
   );
 }
+
+export { AuthorityTracePanel, FactoryLedger, HostedRecordsPanel };

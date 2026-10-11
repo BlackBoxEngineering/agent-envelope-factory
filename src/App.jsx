@@ -1,12 +1,13 @@
 import { useCallback, useState } from "react";
 import FactoryFloor from "./components/FactoryFloor.jsx";
+import ParcelOperations from "./components/ParcelOperations.jsx";
 import RedSpecterAttacks from "./components/RedSpecterAttacks.jsx";
 import SidePanel from "./components/SidePanel.jsx";
 import SetupGuide from "./components/SetupGuide.jsx";
 import Toolbar from "./components/Toolbar.jsx";
 import useFactorySimulation from "./hooks/useFactorySimulation.js";
 
-const viewIds = new Set(["run", "ai-run", "setup", "specter"]);
+const viewIds = new Set(["run", "ai-run", "operations", "setup", "specter"]);
 const VIEW_STORAGE_KEY = "agent-envelope-factory:view";
 
 function initialView() {
@@ -41,6 +42,8 @@ function App() {
         <SetupGuide onBack={() => changeView("run")} />
       ) : view === "specter" ? (
         <RedSpecterAttacks onBack={() => changeView("run")} />
+      ) : view === "operations" ? (
+        <ParcelOperations />
       ) : (
         <section className={`workspace ${isAiRun ? "ai-workspace" : ""}`}>
           <SidePanel side={isAiRun ? "ai-left" : "left"} {...simulation.sidePanelProps} />

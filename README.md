@@ -29,15 +29,16 @@ AgentEnvelope credentials.
 
 ## What Is In The App
 
-The toolbar exposes four views:
+The toolbar exposes five views:
 
 - `Factory Run`: manual simulation. The user starts, disrupts, resets, and changes robot speed.
 - `AI Factory Run`: live prompt console backed by the local Bedrock bridge. The LLM can answer read-only questions in chat or request one gated factory tool.
+- `Live Shift`: continuously ranks arriving parcel trolleys, derives a bounded route command, and uses the same optional hosted mint/register/verify trail as the other factory modes.
 - `Setup Guide`: hosted governance setup notes for the factory delegates and env values.
 - `Red Spectre`: attack-surface mapping plus the AI Factory Run prompt-pressure tests.
 
 The selected view persists in `localStorage` under `agent-envelope-factory:view` and can also be set
-with `?view=run`, `?view=ai-run`, `?view=setup`, or `?view=specter`.
+with `?view=run`, `?view=ai-run`, `?view=operations`, `?view=setup`, or `?view=specter`.
 
 ## Authority Flow
 
@@ -351,7 +352,7 @@ Role scopes:
 
 ```yaml
 RobotBot:
-  operations: pickUp
+  operations: pickUp, routeTrolley
   resources: bay:*, trolley:*
 
 PlannerBot:
@@ -373,7 +374,7 @@ keys, mint material, Bedrock credentials, and other secrets in a server or worke
 ### 4. Confirm the hosted trail
 
 1. Start the app and confirm **Hosted Records** reports `Portal active`.
-2. Start either factory run. Every accepted command automatically publishes the four role records.
+2. Start any factory run. Every accepted command automatically publishes the four role records when its delegate scopes are ready.
 3. Open **Records** to inspect the delegated action records.
 4. Open **Ledger -> Activity** to inspect mint, registration, verification, and legitimacy events.
 

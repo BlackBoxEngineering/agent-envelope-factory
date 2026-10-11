@@ -1,4 +1,4 @@
-import { AlertTriangle, BookOpen, BrainCircuit, Factory, Play, RotateCcw, ShieldAlert } from "lucide-react";
+import { AlertTriangle, BookOpen, BrainCircuit, Factory, Play, RotateCcw, Route, ShieldAlert } from "lucide-react";
 
 function speedLabel(speed) {
   if (speed === 1) return "normal";
@@ -8,6 +8,7 @@ function speedLabel(speed) {
 function Toolbar({ canRun, canDisrupt, onRun, onDisrupt, onReset, onSpeedChange, onViewChange, speed, view }) {
   const isRun = view === "run";
   const isAiRun = view === "ai-run";
+  const isOperations = view === "operations";
   const isSetup = view === "setup";
   const isSpecter = view === "specter";
 
@@ -59,6 +60,10 @@ function Toolbar({ canRun, canDisrupt, onRun, onDisrupt, onReset, onSpeedChange,
           <button type="button" className={isAiRun ? "selected" : ""} onClick={() => onViewChange("ai-run")}>
             <BrainCircuit size={16} aria-hidden="true" />
             AI Factory Run
+          </button>
+          <button type="button" className={isOperations ? "selected" : ""} onClick={() => onViewChange("operations")}>
+            <Route size={16} aria-hidden="true" />
+            Live shift
           </button>
           <button type="button" className={isSetup ? "selected" : ""} onClick={() => onViewChange("setup")}>
             <BookOpen size={16} aria-hidden="true" />
