@@ -3,7 +3,9 @@
 Visual manufacturing legitimacy simulator for AgentEnvelope.
 
 This app demonstrates how a factory command moves through scoped authority, signed command records,
-independent evidence, hosted verification, and legitimacy checks before a robot action is allowed.
+independent evidence, and legitimacy checks before a robot action is allowed. Optional hosted
+verification publishes a separate authority and audit trail without becoming part of the local
+execution requirement.
 It now has two separate factory runs:
 
 - `Factory Run`: the original no-AI simulator controlled by the user.
@@ -263,8 +265,9 @@ The hosted path uses API-key routes for:
 
 - mint;
 - delegated record registration;
-- hosted verification;
-- ledger activity.
+- hosted verification.
+
+Those calls generate account activity that the signed-in customer can inspect in the portal Ledger.
 
 ### 1. Create the portal authority
 
@@ -274,17 +277,18 @@ The hosted path uses API-key routes for:
 3. Open **Account** and copy the **User ID** for `VITE_AE_OWNER_USER_ID`.
 4. Open **Account -> API keys**, create or rotate a key, and copy it immediately for
    `VITE_AE_API_KEY`.
-5. Create this domain:
+5. Open **Projects**, create a project with these values, and then open it:
 
 ```yaml
-namespace: factory-automation
-domainId: logistic-control
+project group: factory-automation
+project id: logistic-control
 kind: robotics
 ```
 
-6. Under that domain, issue one legitimacy-bound delegate for each role listed below. The current
-   demo uses `any-signed-bot`, action indexes `0-10000`, `maxMints: 500`, `maxUsesPerAction: 1`, and
-   a future expiry.
+6. Under **Permissions**, derive one legitimacy-bound runtime permission for each role listed below.
+   The portal exposes the underlying signed object as a mint delegate. The current demo uses
+   `any-signed-bot`, action indexes `0-10000`, `maxMints: 500`, `maxUsesPerAction: 1`, and a future
+   expiry.
 7. For every role, copy the **handoff JSON** into the matching file in this repository and copy the
    **one-time mint material** before leaving the portal. Mint material is not stored by the portal
    and cannot be recovered without unlocking the vault again.
@@ -374,10 +378,12 @@ keys, mint material, Bedrock credentials, and other secrets in a server or worke
 4. Open **Ledger -> Activity** to inspect mint, registration, verification, and legitimacy events.
 
 Each hosted run derives one opaque `correlationId` from the factory `commandId` and sends it with
-all four role verifications. If the account has enabled the MIR adapter and the AgentEnvelope
-backend has a MIR partner key plus approved event type configured, AE maps that value to MIR
-`batchId`. The Factory never receives the MIR key. The Activity view retains MIR's event acceptance
-and event id; acceptance still means checkpoint inclusion is pending rather than already proven.
+all four role verifications. Verification proves that the signed role action is admissible; it does
+not report completed execution to MIR. The backend accepts MIR completion only through
+`POST /sovereign/outcomes`, where a runtime supplies the original signed action and a separately
+signed `agentenvelope.executionOutcome`. This Factory does not yet call that completion route, so
+its command-start publication is not completion evidence and enabling MIR in the portal does not
+submit Factory completion events. The Factory never receives the MIR partner key.
 
 If Hosted Records is not configured, the local simulation and Bedrock operator continue to work;
 only hosted publication is skipped.
