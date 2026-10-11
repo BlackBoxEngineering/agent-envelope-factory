@@ -438,6 +438,7 @@ async function publishHostedRoleAction({ config, role, command, action, order })
       payload,
       signature,
       expectedActionEnvelopeHash: record.actionEnvelopeHash,
+      correlationId: factoryCorrelationId(action.payload.detail.commandId),
     });
   } catch (err) {
     report = {
@@ -574,6 +575,10 @@ async function hostedVerify(apiKey, input) {
     },
     body: JSON.stringify(input),
   });
+}
+
+function factoryCorrelationId(commandId) {
+  return `ae.attempt.${contentHash(commandId).slice(2)}`;
 }
 
 const HOSTED_REQUEST_TIMEOUT_MS = 20_000;

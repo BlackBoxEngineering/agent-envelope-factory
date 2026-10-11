@@ -373,6 +373,12 @@ keys, mint material, Bedrock credentials, and other secrets in a server or worke
 3. Open **Records** to inspect the delegated action records.
 4. Open **Ledger -> Activity** to inspect mint, registration, verification, and legitimacy events.
 
+Each hosted run derives one opaque `correlationId` from the factory `commandId` and sends it with
+all four role verifications. If the account has enabled the MIR adapter and the AgentEnvelope
+backend has a MIR partner key plus approved event type configured, AE maps that value to MIR
+`batchId`. The Factory never receives the MIR key. The Activity view retains MIR's event acceptance
+and event id; acceptance still means checkpoint inclusion is pending rather than already proven.
+
 If Hosted Records is not configured, the local simulation and Bedrock operator continue to work;
 only hosted publication is skipped.
 
