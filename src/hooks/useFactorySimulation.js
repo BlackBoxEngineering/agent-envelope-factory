@@ -114,6 +114,8 @@ const AI_OPERATOR_BRIDGE_URL = import.meta.env.VITE_AI_OPERATOR_BRIDGE_URL ?? "h
 const AI_OPERATOR_HEALTH_URL = AI_OPERATOR_BRIDGE_URL.replace(/\/ai\/operator\/?$/, "/health");
 const AI_OPERATOR_REQUEST_TIMEOUT_MS = 90_000;
 const AI_OPERATOR_HEALTH_TIMEOUT_MS = 8_000;
+const AI_OPERATOR_HEALTH_ATTEMPTS = 5;
+const AI_OPERATOR_HEALTH_RETRY_MS = 300;
 const INITIAL_TARGET = factoryPlan.command.initialTarget;
 const AI_PROVIDER_CHECKING = {
   label: "Amazon Bedrock",
@@ -292,6 +294,20 @@ async function requestBedrockHealth() {
   return body;
 }
 
+async function requestBedrockHealthWithRetry() {
+  let lastError;
+  for (let attempt = 1; attempt <= AI_OPERATOR_HEALTH_ATTEMPTS; attempt += 1) {
+    try {
+      return await requestBedrockHealth();
+    } catch (error) {
+      lastError = error;
+      if (!isBridgeConnectionError(error) || attempt === AI_OPERATOR_HEALTH_ATTEMPTS) throw error;
+      await new Promise((resolve) => setTimeout(resolve, AI_OPERATOR_HEALTH_RETRY_MS));
+    }
+  }
+  throw lastError;
+}
+
 function isBridgeConnectionError(error) {
   if (error?.name === "TimeoutError") return true;
   const message = error instanceof Error ? error.message : String(error);
@@ -340,6 +356,8 @@ function useFactorySimulation({ controller = "manual" } = {}) {
   const [aiAttempts, setAiAttempts] = useState([]);
   const [aiProposedAction, setAiProposedAction] = useState(null);
   const [aiProviderStatus, setAiProviderStatus] = useState(AI_PROVIDER_CHECKING);
+  const aiProviderReadyRef = useRef(false);
+  const aiChatPreflightCompleteRef = useRef(false);
   const [aiThinking, setAiThinking] = useState(false);
   const [hostedConfig, setHostedConfig] = useState(() => initialHostedConfig());
   const [hostedStatus, setHostedStatus] = useState(() => ({
@@ -353,15 +371,20 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
   const refreshAiProviderStatus = useCallback(() => {
     if (!isAiControlled) {
+      aiProviderReadyRef.current = false;
+      aiChatPreflightCompleteRef.current = false;
       setAiProviderStatus(AI_PROVIDER_READY);
       return () => {};
     }
 
     let cancelled = false;
+    aiProviderReadyRef.current = false;
+    aiChatPreflightCompleteRef.current = false;
     setAiProviderStatus(AI_PROVIDER_CHECKING);
     requestBedrockHealth()
       .then((health) => {
         if (cancelled) return;
+        aiProviderReadyRef.current = true;
         setAiProviderStatus({
           label: "Amazon Bedrock",
           status: "ready",
@@ -370,6 +393,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       })
       .catch((error) => {
         if (cancelled) return;
+        aiProviderReadyRef.current = false;
         const message = error instanceof Error ? error.message : AI_PROVIDER_OFFLINE.message;
         setAiProviderStatus(
           /out of date/i.test(message)
@@ -798,6 +822,39 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         addEvent("warn", `Red Spectre pressure test '${preset.title}' stopped the line before Bedrock tool evaluation.`);
       }
       setAiThinking(true);
+      if (!aiProviderReadyRef.current || !aiChatPreflightCompleteRef.current) {
+        setAiProviderStatus({
+          label: "Amazon Bedrock",
+          status: "checking",
+          message: "Waiting for the local Bedrock bridge before sending this prompt.",
+        });
+        try {
+          const health = await requestBedrockHealthWithRetry();
+          aiProviderReadyRef.current = true;
+          aiChatPreflightCompleteRef.current = true;
+          setAiProviderStatus({
+            label: "Amazon Bedrock",
+            status: "ready",
+            message: `Local Bedrock bridge ready: ${health.modelId ?? "Bedrock model"} (${health.region ?? "region unknown"}).`,
+          });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Bedrock bridge unavailable.";
+          const bridgeOffline = isBridgeConnectionError(error);
+          addAiMessage(
+            "error",
+            bridgeOffline
+              ? `Bedrock bridge unavailable after ${AI_OPERATOR_HEALTH_ATTEMPTS} connection checks. Start it with npm run ai:bridge, then try again.`
+              : `Bedrock bridge check failed: ${errorMessage}`,
+          );
+          setAiProviderStatus({
+            label: "Amazon Bedrock",
+            status: bridgeOffline ? "offline" : "error",
+            message: bridgeOffline ? AI_PROVIDER_OFFLINE.message : `Bedrock bridge check failed: ${errorMessage}`,
+          });
+          setAiThinking(false);
+          return;
+        }
+      }
       setAiProviderStatus({
         label: "Amazon Bedrock",
         status: "working",
@@ -822,6 +879,10 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Bedrock operator failed.";
         const bridgeOffline = isBridgeConnectionError(error);
+        if (bridgeOffline) {
+          aiProviderReadyRef.current = false;
+          aiChatPreflightCompleteRef.current = false;
+        }
         addAiMessage(
           "error",
           bridgeOffline
