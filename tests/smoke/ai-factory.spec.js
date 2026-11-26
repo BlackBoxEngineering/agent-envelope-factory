@@ -57,7 +57,7 @@ test("places the manual Factory Ledger beneath the factory floor", async ({ page
   expect(ledgerBox.y).toBeGreaterThanOrEqual(floorBox.y + floorBox.height);
 
   const rightPanelOrder = await rightPanel.locator(":scope > details > summary h2").allTextContents();
-  expect(rightPanelOrder).toEqual(["Current Record", "Authority Trace", "Web Portal Authority Head", "Hosted Records"]);
+  expect(rightPanelOrder).toEqual(["Current Record", "Authority Trace", "Web Portal Authority Head", "Hosted Records", "Assurance journal"]);
 });
 
 test("docks AI chat in the left sidebar and places its open ledger beneath the floor", async ({ page }) => {
@@ -81,7 +81,7 @@ test("docks AI chat in the left sidebar and places its open ledger beneath the f
   await expect(ledger.locator("details")).toHaveAttribute("open", "");
 
   const rightPanelOrder = await rightPanel.locator(":scope > details > summary h2").allTextContents();
-  expect(rightPanelOrder).toEqual(["Current Record", "Authority Trace", "Web Portal Authority Head", "Hosted Records"]);
+  expect(rightPanelOrder).toEqual(["Current Record", "Authority Trace", "Web Portal Authority Head", "Hosted Records", "Assurance journal"]);
 
   const floorBox = await floor.boundingBox();
   const ledgerBox = await ledger.boundingBox();
@@ -327,6 +327,10 @@ test("blocks recovery when no location mismatch exists", async ({ page }) => {
   await page.getByRole("button", { name: "Fix blocker" }).click();
 
   await expect(page.getByText(/Recovery blocked: the visible plan does not currently require/)).toBeVisible();
+  const journal = page.locator(".assurance-journal");
+  await journal.getByRole("heading", { name: "Assurance journal" }).click();
+  await expect(journal.getByText("3 verified")).toBeVisible();
+  await expect(journal.getByText("execution.not_started", { exact: true })).toBeVisible();
 });
 
 test("operator chat popout has a dedicated loading shell", async ({ request }) => {

@@ -1889,6 +1889,20 @@ button {
   gap: 8px;
 }
 
+.assurance-journal p {
+  margin: 10px 0 0;
+  color: var(--ae-muted);
+  font-size: 12px;
+}
+
+.assurance-journal li {
+  overflow-wrap: anywhere;
+}
+
+.assurance-journal li small {
+  color: var(--ae-muted);
+}
+
 .event-log li {
   padding: 10px 10px 10px 13px;
   border-radius: 6px;

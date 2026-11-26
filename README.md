@@ -40,6 +40,27 @@ The toolbar exposes five views:
 The selected view persists in `localStorage` under `agent-envelope-factory:view` and can also be set
 with `?view=run`, `?view=ai-run`, `?view=operations`, `?view=setup`, or `?view=specter`.
 
+## Assurance journal
+
+Open **Assurance journal** in the right sidebar of **Factory Run**, **AI Factory Run**, or **Live Shift**.
+Each view keeps a separate journal through the published `agent-envelope-assurance-sdk`. You can use
+it in offline mode. Reloading the demo or resetting the floor preserves its local journal.
+
+- A pickup gets a fresh correlation ID when the signed command is issued. The journal records
+  admission when loading starts and completion once the trolley reaches the truck. A replacement
+  command gets its own ID.
+- A blocked console request or rejected AI proposal records `attempt.observed`,
+  `attempt.rejected`, and `execution.not_started` at the local boundary. An admitted AI proposal
+  and the signed pickup it may lead to have separate correlation IDs.
+- Live Shift records parcel routing decisions and reports completion when a trolley arrives at
+  its simulated destination.
+
+The panel shows recent signed events, a verified count, and a checkpoint. The journal uses Web Locks
+to coordinate writes across tabs. It shows an evidence gap if a write or verification fails. The
+simulator still owns admission and execution.
+Events store digests and reason codes. Raw prompts, credentials, and command payloads stay out of
+the journal. The browser holds both the local journal and its demonstration reporter key.
+
 ## Authority Flow
 
 The factory actors are defined in `src/factoryConfig.js`:
@@ -62,8 +83,8 @@ The manual factory keeps the original no-AI behavior:
 - The user can move trolley4 to create a blocker.
 - The left rail contains handled disruptions and hack command examples.
 - The Factory Ledger starts open beneath the floor plan so the event trail follows the simulation visually.
-- The right rail contains collapsible hosted records, authority head, current record, and authority
-  trace panels.
+- The right rail contains collapsible hosted records, authority head, current record, authority
+  trace, and Assurance journal panels.
 
 This page should remain free of AI operator chat or Bedrock behavior.
 

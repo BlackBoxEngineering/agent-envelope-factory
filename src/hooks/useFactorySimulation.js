@@ -34,6 +34,7 @@ import {
   publishHostedFactoryCommand,
   saveHostedConfig,
 } from "../factoryHosted.js";
+import useFactoryAssurance from "./useFactoryAssurance.js";
 
 const AI_PRESETS = [
   {
@@ -315,6 +316,8 @@ function isBridgeConnectionError(error) {
 }
 
 function useFactorySimulation({ controller = "manual" } = {}) {
+  const { report: reportAssurance, snapshot: assurance } = useFactoryAssurance(controller);
+  const pickupAttemptRef = useRef(null);
   const isAiControlled = controller === "ai";
   const readyMessage = isAiControlled
     ? "The LLM occupies the human operator seat. PlannerBot and the governed factory chain remain responsible for planning and execution."
@@ -510,10 +513,36 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     setAiMessages((current) => [...current, { id: nextId, role, text }].slice(-12));
   }, []);
 
-  const clearTimers = useCallback(() => {
+  const finishPickupAttempt = useCallback((events) => {
+    const attempt = pickupAttemptRef.current;
+    if (!attempt) return;
+    pickupAttemptRef.current = null;
+    reportAssurance(attempt.subject, events, attempt.id);
+  }, [reportAssurance]);
+
+  const rejectPickup = useCallback((reason) => {
+    finishPickupAttempt([["attempt.rejected", reason], ["execution.not_started", reason]]);
+  }, [finishPickupAttempt]);
+
+  const issueObservedPickup = useCallback((input) => {
+    const issued = issueCommand(input);
+    const subject = { command: issued.command, signature: issued.signature, recordId: issued.recordId };
+    const id = reportAssurance(subject, [["attempt.observed", "command.issued"]]);
+    pickupAttemptRef.current = { id, subject, loading: false };
+    return issued;
+  }, [reportAssurance]);
+
+  const clearTimers = useCallback((reason = "simulator.interrupted") => {
     timersRef.current.forEach((timer) => clearTimeout(timer));
     timersRef.current = [];
-  }, []);
+    const attempt = pickupAttemptRef.current;
+    if (attempt) {
+      finishPickupAttempt([
+        ["attempt.paused", reason],
+        [attempt.loading ? "execution.unknown" : "execution.not_started", reason],
+      ]);
+    }
+  }, [finishPickupAttempt]);
 
   const wait = useCallback((ms, fn) => {
     const timer = setTimeout(fn, Math.round(ms / speed));
@@ -545,7 +574,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     if (currentPhase === "stopped") return "stopped";
     if (!["moving", "reviewing", "replanning"].includes(currentPhase)) return "idle";
 
-    clearTimers();
+    clearTimers("safety.stop_line");
     freezeRobotPosition();
     latestPhaseRef.current = "stopped";
     setPhase("stopped");
@@ -576,8 +605,23 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     [],
   );
 
+  const loadTruck = useCallback(() => {
+    const attempt = pickupAttemptRef.current;
+    if (attempt) {
+      attempt.loading = true;
+      reportAssurance(attempt.subject, [["attempt.admitted", "state.current"]], attempt.id);
+    }
+    moveRobotTo("truck", "trolley4");
+    wait(LOAD_MS, () => {
+      moveTrolley("trolley4", "truck");
+      if (attempt && pickupAttemptRef.current === attempt) {
+        finishPickupAttempt([["execution.completed", "simulator.loaded"]]);
+      }
+    });
+  }, [finishPickupAttempt, moveRobotTo, moveTrolley, reportAssurance, wait]);
+
   const reset = useCallback(() => {
-    clearTimers();
+    clearTimers("simulator.reset");
     latestPhaseRef.current = "ready";
     setTrolleys(initialTrolleys);
     setRobot(initialRobot);
@@ -751,8 +795,15 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     };
     setAiProposedAction(attempt);
     setAiAttempts((current) => [attempt, ...current].slice(0, 10));
+    const events = [["attempt.observed", "operator.intent"]];
+    if (outcome.status === "blocked") {
+      events.push(["attempt.rejected", outcome.reasonCode], ["execution.not_started", outcome.reasonCode]);
+    } else if (outcome.status === "allowed") {
+      events.push(["attempt.admitted", outcome.reasonCode]);
+    }
+    reportAssurance({ tool: proposal.tool, operation: proposal.operation, resources: proposal.resources }, events);
     return attempt;
-  }, []);
+  }, [reportAssurance]);
 
   const reportAiToolOutcome = useCallback(
     (role, proposal, outcome) => {
@@ -1036,7 +1087,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
         clearTimers();
 
-        const original = issueCommand({ trolleyId: "trolley4", bayId: INITIAL_TARGET, sequence: `ai-start-${aiAttemptCounterRef.current}` });
+        const original = issueObservedPickup({ trolleyId: "trolley4", bayId: INITIAL_TARGET, sequence: `ai-start-${aiAttemptCounterRef.current}` });
         const evidence = createIndependentLocationEvidence(INITIAL_TARGET, 18);
         const originalState = createLegitimacyState({
           command: original.command,
@@ -1079,6 +1130,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         );
 
         if (!signatureCheck.valid || decision.decision !== "allowed") {
+          rejectPickup(signatureCheck.valid ? decision.reasonCode : "crypto.signature_mismatch");
           setPhase("denied");
           setStatus({
             signature: signatureCheck.valid ? "valid" : "failed",
@@ -1139,6 +1191,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         wait(ROBOT_TRAVEL_MS, () => {
           const observedSlot = currentTrolleySlot();
           if (observedSlot !== INITIAL_TARGET) {
+            rejectPickup("state.mismatched");
             const robotAlert = createRobotLocationEvidence(observedSlot, 22);
             const robotOnlyEvidence = assessEvidenceIndependence([robotAlert], authorityPolicy);
             setPhase("reviewing");
@@ -1169,6 +1222,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
             now: new Date("2026-08-26T18:31:20.000Z"),
           });
           if (arrivalDecision.decision !== "allowed") {
+            rejectPickup(arrivalDecision.reasonCode);
             setPhase("denied");
             setStatus({
               signature: "valid",
@@ -1182,7 +1236,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
             return;
           }
 
-          moveRobotTo("truck", "trolley4");
+          loadTruck();
           setPhase("complete");
           setStatus({
             signature: "valid",
@@ -1193,7 +1247,6 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           });
           addAiMessage("tool", `Run record complete. RobotBot loaded trolley4 into the truck under the scoped ${INITIAL_TARGET} command.`);
           addEvent("ok", "RobotBot completed the AI-started run under AgentEnvelope authority.");
-          wait(LOAD_MS, () => moveTrolley("trolley4", "truck"));
         });
         return;
       }
@@ -1238,7 +1291,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
         clearTimers();
 
-        const corrected = issueCommand({ trolleyId: "trolley4", bayId: targetSlot, sequence: `ai-${aiAttemptCounterRef.current}` });
+        const corrected = issueObservedPickup({ trolleyId: "trolley4", bayId: targetSlot, sequence: `ai-${aiAttemptCounterRef.current}` });
         const evidence = createIndependentLocationEvidence(targetSlot, 24);
         const correctedState = createLegitimacyState({
           command: corrected.command,
@@ -1315,6 +1368,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         addEvent("ok", `Delegated record registered locally: ${corrected.recordId}.`);
 
         if (correctedDecision.decision !== "allowed") {
+          rejectPickup(correctedDecision.reasonCode);
           setPhase("denied");
           addEvent("bad", `AI correction denied: ${correctedDecision.reasonCode}.`);
           return;
@@ -1325,6 +1379,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         wait(REROUTE_MS, () => {
           const observedSlot = currentTrolleySlot();
           if (observedSlot !== targetSlot) {
+            rejectPickup("state.mismatched");
             setPhase("reviewing");
             setStatus({
               signature: "valid",
@@ -1339,7 +1394,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
             return;
           }
 
-          moveRobotTo("truck", "trolley4");
+          loadTruck();
           setPhase("complete");
           setStatus({
             signature: "valid",
@@ -1350,7 +1405,6 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           });
           addAiMessage("tool", `Recovery complete. RobotBot loaded trolley4 from ${targetSlot} under the corrected scoped command.`);
           addEvent("ok", `RobotBot executed the AI-assisted correction at ${targetSlot} under AgentEnvelope authority.`);
-          wait(LOAD_MS, () => moveTrolley("trolley4", "truck"));
         });
         return;
       }
@@ -1444,12 +1498,15 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       clearTimers,
       currentTrolleySlot,
       freezeRobotPosition,
+      issueObservedPickup,
       latchSafetyStop,
+      loadTruck,
       moveRobotTo,
       moveTrolley,
       phase,
       publishHostedCommand,
       recordAiAttempt,
+      rejectPickup,
       reportAiToolOutcome,
       reset,
       robot.carrying,
@@ -1479,7 +1536,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       clearTimers();
       const recoveryNumber = plannerRecoveryCounterRef.current;
       plannerRecoveryCounterRef.current += 1;
-      const corrected = issueCommand({
+      const corrected = issueObservedPickup({
         trolleyId: "trolley4",
         bayId: confirmedSlot,
         sequence: `planner-recovery-${recoveryNumber}`,
@@ -1546,6 +1603,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       }
 
       if (correctedDecision.decision !== "allowed") {
+        rejectPickup(correctedDecision.reasonCode);
         setPhase("denied");
         addEvent("bad", `State repair denied: ${correctedDecision.reasonCode}.`);
         return;
@@ -1556,6 +1614,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       wait(REROUTE_MS, () => {
         const observedSlot = currentTrolleySlot();
         if (observedSlot !== confirmedSlot) {
+          rejectPickup("state.mismatched");
           const robotAlert = createRobotLocationEvidence(observedSlot, 30 + recoveryNumber);
           const robotOnlyEvidence = assessEvidenceIndependence([robotAlert], authorityPolicy);
           setPhase("reviewing");
@@ -1576,7 +1635,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           return;
         }
 
-        moveRobotTo("truck", "trolley4");
+        loadTruck();
         setPhase("complete");
         setStatus({
           signature: "valid",
@@ -1589,10 +1648,9 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         if (isAiControlled) {
           addAiMessage("tool", `Recovery complete. RobotBot loaded trolley4 from ${confirmedSlot} under PlannerBot's corrected plan and fresh scoped authority.`);
         }
-        wait(LOAD_MS, () => moveTrolley("trolley4", "truck"));
       });
     },
-    [activeRun, addAiMessage, addEvent, clearTimers, currentTrolleySlot, isAiControlled, moveRobotTo, moveTrolley, publishHostedCommand, status.reasonCode, wait],
+    [activeRun, addAiMessage, addEvent, clearTimers, currentTrolleySlot, isAiControlled, issueObservedPickup, loadTruck, moveRobotTo, publishHostedCommand, rejectPickup, status.reasonCode, wait],
   );
 
   useEffect(() => {
@@ -1611,11 +1669,19 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         return;
       }
 
-      clearTimers();
+      const rejectProbe = (decision) => {
+        reportAssurance({ scenario: kind, commandId: activeRun?.command.commandId ?? null }, [
+          ["attempt.observed", "simulator.probe"],
+          ["attempt.rejected", decision.reasonCode],
+          ["execution.not_started", decision.reasonCode],
+        ]);
+        setStatus(decision);
+      };
+      clearTimers("simulator.probe_interrupted");
       freezeRobotPosition();
       if (!activeRun) {
         setPhase("denied");
-        setStatus({
+        rejectProbe({
           signature: "waiting",
           legitimacy: "denied",
           evidence: "waiting",
@@ -1632,7 +1698,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
       if (kind === "tamper-target") {
         setPhase("denied");
-        setStatus({
+        rejectProbe({
           signature: "failed",
           legitimacy: "denied",
           evidence: "waiting",
@@ -1649,7 +1715,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
       if (kind === "scope-escalation") {
         setPhase("denied");
-        setStatus({
+        rejectProbe({
           signature: "failed",
           legitimacy: "denied",
           evidence: "waiting",
@@ -1666,7 +1732,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
       if (kind === "package-injection") {
         setPhase("denied");
-        setStatus({
+        rejectProbe({
           signature: "failed",
           legitimacy: "denied",
           evidence: "waiting",
@@ -1683,7 +1749,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
       if (kind === "ci-secret-compromise") {
         setPhase("denied");
-        setStatus({
+        rejectProbe({
           signature: "failed",
           legitimacy: "denied",
           evidence: "waiting",
@@ -1700,7 +1766,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
       if (kind === "orchestrator-jump") {
         setPhase("denied");
-        setStatus({
+        rejectProbe({
           signature: "failed",
           legitimacy: "denied",
           evidence: "sufficient",
@@ -1717,7 +1783,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
       if (kind === "telemetry-forgery") {
         setPhase("denied");
-        setStatus({
+        rejectProbe({
           signature: "valid",
           legitimacy: "denied",
           evidence: "insufficient",
@@ -1734,7 +1800,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
       if (kind === "approval-forgery") {
         setPhase("denied");
-        setStatus({
+        rejectProbe({
           signature: "valid",
           legitimacy: "denied",
           evidence: "sufficient",
@@ -1751,7 +1817,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
       if (kind === "intent-fragmentation") {
         setPhase("denied");
-        setStatus({
+        rejectProbe({
           signature: "failed",
           legitimacy: "denied",
           evidence: "sufficient",
@@ -1768,7 +1834,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
       if (kind === "replay") {
         setPhase("denied");
-        setStatus({
+        rejectProbe({
           signature: "valid",
           legitimacy: "denied",
           evidence: "sufficient",
@@ -1785,7 +1851,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
 
       addEvent("warn", `Unknown hack attempt ignored: ${kind}.`);
     },
-    [activeRun, addEvent, clearTimers, freezeRobotPosition, recoverWithFreshCommand],
+    [activeRun, addEvent, clearTimers, freezeRobotPosition, recoverWithFreshCommand, reportAssurance],
   );
 
   const runPortalAction = useCallback(
@@ -1879,7 +1945,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     }
 
     clearTimers();
-    const corrected = issueCommand({ trolleyId: "trolley4", bayId: disruptionSlot, sequence: "v3" });
+    const corrected = issueObservedPickup({ trolleyId: "trolley4", bayId: disruptionSlot, sequence: "v3" });
     const evidence = createIndependentLocationEvidence(disruptionSlot, 12);
     const correctedState = createLegitimacyState({
       command: corrected.command,
@@ -1926,6 +1992,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     addEvent("ok", `DispatchAuthority signed the reroute command for ${disruptionSlot}.`);
 
     if (correctedDecision.decision !== "allowed") {
+      rejectPickup(correctedDecision.reasonCode);
       setPhase("denied");
       addEvent("bad", `Reroute denied: ${correctedDecision.reasonCode}.`);
       return;
@@ -1934,7 +2001,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     setPhase("replanning");
     moveRobotTo(disruptionSlot);
     wait(REROUTE_MS, () => {
-      moveRobotTo("truck", "trolley4");
+      loadTruck();
       setPhase("complete");
       setStatus({
         signature: "valid",
@@ -1944,9 +2011,8 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         message: `Reroute completed at ${disruptionSlot}; trolley4 loaded into the truck.`,
       });
       addEvent("ok", `RobotBot rerouted to ${disruptionSlot} and loaded trolley4 without a stop-the-line fault.`);
-      wait(LOAD_MS, () => moveTrolley("trolley4", "truck"));
     });
-  }, [activeRun, addEvent, clearTimers, disruptionSlot, moveRobotTo, moveTrolley, phase, publishHostedCommand, robot.carrying, wait]);
+  }, [activeRun, addEvent, clearTimers, disruptionSlot, issueObservedPickup, loadTruck, moveRobotTo, moveTrolley, phase, publishHostedCommand, rejectPickup, robot.carrying, wait]);
 
   const runScenarioBug = useCallback(
     (kind) => {
@@ -2003,7 +2069,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       ],
       observedAt: "2026-08-26T18:28:45.000Z",
     });
-    const original = issueCommand({ trolleyId: "trolley4", bayId: INITIAL_TARGET, sequence: "v1" });
+    const original = issueObservedPickup({ trolleyId: "trolley4", bayId: INITIAL_TARGET, sequence: "v1" });
     const originalState = createLegitimacyState({
       command: original.command,
       recordId: original.recordId,
@@ -2033,7 +2099,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     moveRobotTo(INITIAL_TARGET);
 
     const completePickup = (targetSlot) => {
-      moveRobotTo("truck", "trolley4");
+      loadTruck();
       setPhase("complete");
       setStatus({
         signature: "valid",
@@ -2043,7 +2109,6 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         message: `Command is legitimate at ${targetSlot}; trolley4 loaded into the truck.`,
       });
       addEvent("ok", `RobotBot picked up trolley4 from ${targetSlot} and loaded the truck.`);
-      wait(LOAD_MS, () => moveTrolley("trolley4", "truck"));
     };
 
     const verifyArrivalAndComplete = (attempted, state, attemptedSignature, targetSlot, nextSequence) => {
@@ -2073,6 +2138,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       addEvent("ok", `Independent evidence confirmed trolley4 at ${targetSlot}.`);
 
       if (decision.decision !== "allowed") {
+        rejectPickup(decision.reasonCode);
         setPhase("denied");
         addEvent("bad", `Execution denied: ${decision.reasonCode}.`);
         return;
@@ -2144,6 +2210,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           return;
         }
 
+        rejectPickup(staleDecision.reasonCode);
         const { event, updated } = patchStateForMismatch(state, staleDecision, attempted.command);
         setActiveRun({
           command: attempted.command,
@@ -2158,7 +2225,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         addEvent("bad", `GovernanceEvaluator suspended legitimacy for ${expectedSlot}: ${staleDecision.reasonCode}.`);
 
         wait(REVIEW_MS, () => {
-          const corrected = issueCommand({ trolleyId: "trolley4", bayId: confirmedSlot, sequence: `v${nextSequence}` });
+          const corrected = issueObservedPickup({ trolleyId: "trolley4", bayId: confirmedSlot, sequence: `v${nextSequence}` });
           const correctedState = createLegitimacyState({
             command: corrected.command,
             recordId: corrected.recordId,
@@ -2205,6 +2272,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
           addEvent("ok", `Governance report ${correctedReport.reportId}: ${correctedDecision.reasonCode}.`);
 
           if (correctedDecision.decision !== "allowed") {
+            rejectPickup(correctedDecision.reasonCode);
             setPhase("denied");
             addEvent("bad", `Corrected command denied: ${correctedDecision.reasonCode}.`);
             return;
@@ -2220,7 +2288,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     };
 
     wait(ROBOT_TRAVEL_MS, () => verifyArrivalAndComplete(original, originalState, signatureCheck, INITIAL_TARGET, 2));
-  }, [addEvent, canRun, clearTimers, currentTrolleySlot, moveRobotTo, moveTrolley, publishHostedCommand, wait]);
+  }, [addEvent, canRun, clearTimers, currentTrolleySlot, issueObservedPickup, loadTruck, moveRobotTo, publishHostedCommand, rejectPickup, wait]);
 
   const floorStyle = useMemo(
     () => ({
@@ -2310,6 +2378,7 @@ function useFactorySimulation({ controller = "manual" } = {}) {
     },
     sidePanelProps: {
       activeRun,
+      assurance,
       ai: {
         attempts: aiAttempts,
         messages: aiMessages,

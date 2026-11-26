@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { factoryPlan } from "../factoryConfig.js";
 import { ChatMarkdown } from "./ChatMarkdown.jsx";
+import AssuranceJournal from "./AssuranceJournal.jsx";
 import {
   Activity,
   Bot,
@@ -27,6 +28,7 @@ import {
 function SidePanel({
   activeRun,
   ai,
+  assurance,
   consoleState,
   events,
   hosted,
@@ -88,23 +90,13 @@ function SidePanel({
     );
   }
 
-  if (side === "ai-right") {
-    return (
-      <aside className="side-panel right-panel ai-right-panel">
-        <CurrentRecordPanel activeRun={activeRun} trolley4Slot={trolley4Slot} />
-        <AuthorityTracePanel activeRun={activeRun} />
-        <AuthorityHeadPanel consoleState={consoleState} onPortalAction={onPortalAction} />
-        <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
-      </aside>
-    );
-  }
-
   return (
-    <aside className="side-panel right-panel">
+    <aside className={`side-panel right-panel${side === "ai-right" ? " ai-right-panel" : ""}`}>
       <CurrentRecordPanel activeRun={activeRun} trolley4Slot={trolley4Slot} />
       <AuthorityTracePanel activeRun={activeRun} />
       <AuthorityHeadPanel consoleState={consoleState} onPortalAction={onPortalAction} />
       <HostedRecordsPanel activeRun={activeRun} hosted={hosted} />
+      <AssuranceJournal assurance={assurance} />
     </aside>
   );
 }

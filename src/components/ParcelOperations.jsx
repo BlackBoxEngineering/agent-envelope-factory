@@ -34,6 +34,8 @@ import {
   saveHostedConfig,
 } from "../factoryHosted.js";
 import { AuthorityTracePanel, HostedRecordsPanel } from "./SidePanel.jsx";
+import AssuranceJournal from "./AssuranceJournal.jsx";
+import useFactoryAssurance from "../hooks/useFactoryAssurance.js";
 
 const ROUTING_SCOPE_PROBE = Object.freeze({
   commandId: "parcel-routing-scope-probe",
@@ -491,9 +493,75 @@ function DecisionTimeline({ decisions, completed }) {
   );
 }
 
+function useParcelAssurance({ active, decisions, completed }) {
+  const { report, snapshot } = useFactoryAssurance("live-shift");
+  const shiftRef = useRef(null);
+  const activeAuthority = active?.authority;
+
+  const endShift = useCallback(() => {
+    const shift = shiftRef.current;
+    if (shift?.active) {
+      const { subject, correlationId } = shift.active;
+      report(subject, [["attempt.paused", "shift.interrupted"], ["execution.unknown", "shift.interrupted"]], correlationId);
+    }
+    shiftRef.current = null;
+  }, [report]);
+
+  useEffect(() => endShift, [endShift]);
+
+  useEffect(() => {
+    if (!decisions.length) {
+      endShift();
+      return;
+    }
+
+    const shift = shiftRef.current ??= {
+      id: globalThis.crypto?.randomUUID?.() ?? "unavailable",
+      decision: 0,
+      completion: 0,
+      active: null,
+    };
+    const entries = [];
+    for (const decision of decisions.filter(item => item.sequence > shift.decision)) {
+      const { commandId, recordId } = decision.proof;
+      const admitted = decision.status === "admitted";
+      entries.push({
+        sequence: decision.sequence,
+        subject: { commandId, recordId },
+        events: [
+          ["attempt.observed", "parcel.routed"],
+          [admitted ? "attempt.admitted" : "attempt.rejected", decision.reasonCode],
+          ...(admitted ? [] : [["execution.not_started", decision.reasonCode]]),
+        ],
+      });
+    }
+    for (const item of completed.filter(item => item.sequence > shift.completion)) {
+      entries.push({
+        sequence: item.sequence,
+        subject: { commandId: item.authority.command.commandId, recordId: item.authority.publicRecord.recordId },
+        events: [["execution.completed", "parcel.delivered"]],
+      });
+    }
+    entries.sort((a, b) => a.sequence - b.sequence);
+    for (const { subject, events } of entries) {
+      report(subject, events, `${shift.id}:${subject.commandId}`);
+    }
+
+    shift.decision = decisions[0].sequence;
+    shift.completion = completed[0]?.sequence ?? 0;
+    shift.active = activeAuthority ? {
+      subject: { commandId: activeAuthority.command.commandId, recordId: activeAuthority.publicRecord.recordId },
+      correlationId: `${shift.id}:${activeAuthority.command.commandId}`,
+    } : null;
+  }, [activeAuthority, completed, decisions, endShift, report]);
+
+  return snapshot;
+}
+
 function ParcelOperations() {
   const [state, dispatch] = useReducer(parcelOperationsReducer, undefined, () => initialParcelOperationsState());
   const hosted = useParcelHostedPublishing();
+  const assurance = useParcelAssurance(state);
 
   useEffect(() => {
     if (!state.running) return undefined;
@@ -575,6 +643,7 @@ function ParcelOperations() {
         <CurrentDecision active={state.active} candidates={candidates} simSeconds={state.simSeconds} />
         <AuthorityTracePanel activeRun={authorityRun} />
         <HostedRecordsPanel activeRun={authorityRun} hosted={hosted.panelProps} />
+        <AssuranceJournal assurance={assurance} />
         <details className="status-panel collapsible-panel parcel-statistics" open>
           <summary className="panel-heading">
             <Gauge size={18} aria-hidden="true" />

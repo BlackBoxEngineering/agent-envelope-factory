@@ -307,6 +307,7 @@ function scheduleNext(state) {
   });
   const duration = Math.max(16, ranking.distance * 1.35);
   const active = {
+    sequence: state.nextSequence,
     trolley: ranking.trolley,
     authority,
     source: parcelPoints[ranking.trolley.source],
@@ -323,6 +324,7 @@ function scheduleNext(state) {
     status: authority.decision.decision === "allowed" ? "admitted" : "rejected",
     recordId: authority.publicRecord.recordId,
     reason: authority.decision.reason,
+    reasonCode: authority.decision.reasonCode,
     score: ranking.score,
     distance: ranking.distance,
     proof: {
