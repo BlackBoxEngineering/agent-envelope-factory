@@ -332,7 +332,10 @@ const server = createServer(async (req, res) => {
     send(req, res, 200, { provider: "bedrock", ...result });
   } catch (error) {
     const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
-    send(req, res, timedOut ? 504 : 500, {
+    const unavailable = ["ECONNRESET", "ECONNREFUSED", "EAI_AGAIN", "ETIMEDOUT"].includes(error?.code) ||
+      [502, 503, 504].includes(error?.$metadata?.httpStatusCode);
+    const status = timedOut ? 504 : unavailable ? 503 : 500;
+    send(req, res, status, {
       error: timedOut
         ? `Bedrock did not respond within ${Math.round(BEDROCK_TIMEOUT_MS / 1000)} seconds.`
         : error instanceof Error ? error.message : "Bedrock operator failed",

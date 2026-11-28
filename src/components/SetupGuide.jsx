@@ -1,4 +1,5 @@
 import { Bot, CheckCircle2, ClipboardList, Cloud, Globe2, KeyRound, Link2, ShieldCheck } from "lucide-react";
+import { verifyMintDelegate } from "agent-envelope-sdk";
 import robotDelegate from "../../mint-delegate.json";
 import plannerDelegate from "../../mint-delegate.planner.json";
 import evidenceDelegate from "../../mint-delegate.evidence.json";
@@ -18,15 +19,15 @@ const DELEGATES = [
     file: "mint-delegate.evidence.json",
     envPrefix: "EVIDENCE",
     delegate: evidenceDelegate,
-    requiredOperations: ["attest-location", "attest-safety"],
-    requiredResources: ["bay:*", "trolley:*", "dock:*"],
+    requiredOperations: ["attest-location"],
+    requiredResources: ["bay:*", "trolley:*"],
   },
   {
     title: "Governance repair authority",
     file: "mint-delegate.governance.json",
     envPrefix: "GOVERNANCE",
     delegate: governanceDelegate,
-    requiredOperations: ["approve-legitimacy", "suspend-legitimacy", "repair-state"],
+    requiredOperations: ["repair-state"],
     requiredResources: ["delegate:*", "record:*", "command:*"],
   },
   {
@@ -34,7 +35,7 @@ const DELEGATES = [
     file: "mint-delegate.planner.json",
     envPrefix: "PLANNER",
     delegate: plannerDelegate,
-    requiredOperations: ["propose-reroute", "request-correction"],
+    requiredOperations: ["propose-reroute"],
     requiredResources: ["bay:*", "trolley:*", "command:*"],
   },
 ];
@@ -170,7 +171,12 @@ function DelegateRow({ item }) {
   const { delegate } = item;
   const missingOperations = item.requiredOperations.filter((operation) => !delegate.allowedOperations.includes(operation));
   const missingResources = item.requiredResources.filter((resource) => !delegate.allowedResources.includes(resource));
-  const ready = missingOperations.length === 0 && missingResources.length === 0;
+  const { domainSummary, ...signed } = delegate;
+  const check = verifyMintDelegate(signed, domainSummary?.domainAddress);
+  const issues = [...missingOperations, ...missingResources];
+  if (!check.valid) issues.push(check.reason);
+  if (!signed.legitimacyRef?.required) issues.push("Required legitimacy state missing");
+  const ready = issues.length === 0;
 
   return (
     <article className="delegate-row">
@@ -194,7 +200,7 @@ function DelegateRow({ item }) {
       {ready ? (
         <CheckCircle2 size={18} aria-label="Configured" />
       ) : (
-        <span className="delegate-scope-warning" title={[...missingOperations, ...missingResources].join(", ")}>
+        <span className="delegate-scope-warning" title={issues.join(", ")}>
           Reissue
         </span>
       )}

@@ -1,39 +1,37 @@
 {
   "type": "agentenvelope.mintDelegate",
   "version": 1,
-  "delegateId": "ae-delegate-0ebc43bfdd9e423f",
+  "delegateId": "ae-delegate-bd9454b4db1a38d0",
   "legitimacyRef": {
-    "legitimacyId": "ae-legit-b177b74acf7e5277",
+    "legitimacyId": "ae-legit-7ae70ab62d210e40",
     "stateVersion": 1,
-    "stateHash": "0x410205d9781c83e0593ead95f3a267922355c01e9d0f20a8db8615cbf40e7c7f",
+    "stateHash": "0x7f142d74a881212726a3f1deee48c2d3f7d4a4eff32382ce934a119336f88379",
     "policyId": "manual-approval",
     "required": true
   },
-  "issuerAddress": "0xae5303f858f4b3b4c43f7857882b42e25965f53d",
-  "avatarAddress": "0xa897c2abe7c613e3fd0b5f37bf06184720a2c596",
+  "issuerAddress": "0x7c7c806d6589e21bf1b30bcb21ff1fdd0a62251f",
+  "avatarAddress": "0x51396c3f1e1a210357132fdf6c196866e3dc5651",
   "domainHash": "0x3eaea64cf6559715fae19509f49005e6eb232644c98ea6a64814c5ca2d9ad380",
   "allowedOperations": [
-    "attest-location",
-    "attest-safety"
+    "attest-location"
   ],
   "allowedResources": [
     "bay:*",
-    "trolley:*",
-    "dock:*"
+    "trolley:*"
   ],
   "botPolicy": "any-signed-bot",
   "actionIndexPolicy": {
     "min": 0,
-    "max": 10000
+    "max": 99
   },
-  "maxMints": 500,
+  "maxMints": 1000,
   "maxUsesPerAction": 1,
   "timeWindow": {
-    "notBefore": 1788859137395,
-    "notAfter": 1844669460000
+    "notBefore": 1795854803456,
+    "notAfter": 1827995160000
   },
-  "nonce": "0xa0e3bd71d568aa56bf4e274ae0fac56e918f172abfbf8e6a1a10df398af3b16a",
-  "issuedAt": "2026-09-08T09:18:57.395Z",
+  "nonce": "0x053eea0b1e380578310fe2483125fa8be5f07e90847c80e93aed3bfbb03a4995",
+  "issuedAt": "2026-11-28T08:33:23.456Z",
   "domainSummary": {
     "domainInfo": {
       "type": "agentenvelope.domainInfo",
@@ -44,9 +42,9 @@
     },
     "canonicalDomainInfo": "{\"domainId\":\"logistic-control\",\"kind\":\"robotics\",\"namespace\":\"factory-automation\",\"type\":\"agentenvelope.domainInfo\",\"version\":1}",
     "domainHash": "0x3eaea64cf6559715fae19509f49005e6eb232644c98ea6a64814c5ca2d9ad380",
-    "domainAddress": "0xae5303f858f4b3b4c43f7857882b42e25965f53d",
-    "domainFingerprint": "ae-domain-2a32f2bfc7405890",
-    "createdAt": "2026-09-08T09:11:02.512Z"
+    "domainAddress": "0x7c7c806d6589e21bf1b30bcb21ff1fdd0a62251f",
+    "domainFingerprint": "ae-domain-0ca2352543dc1b8b",
+    "createdAt": "2026-11-28T08:25:54.360Z"
   },
-  "issuerSignature": "0x69eb48538fd3ba4efd1cb427de1d9e7e603fae10e3a2f52ea9eeb6c48f86b3ce17960ee4e7b8e67343b746cd156fe29be2fae725d0e69640f4175112cf581d351c"
+  "issuerSignature": "0x823925bf8d5a9ac7ac67717b36c041688e67bbb7062afc08200fce147a0eec4e5817cc81ea2bcbecce5ac5163348d6550e322a7958f3f7d1fcfd9b177257c8c51b"
 }

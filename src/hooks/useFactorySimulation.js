@@ -259,23 +259,20 @@ function proposalFromChatAnswer(answer, prompt) {
 }
 
 async function requestBedrockOperator({ prompt, presetId, state }) {
-  let response;
-  try {
-    response = await fetch(AI_OPERATOR_BRIDGE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, presetId, state }),
-      signal: AbortSignal.timeout(AI_OPERATOR_REQUEST_TIMEOUT_MS),
-    });
-  } catch (error) {
-    if (error?.name === "TimeoutError") {
-      throw new Error(`Bedrock bridge did not respond within ${Math.round(AI_OPERATOR_REQUEST_TIMEOUT_MS / 1000)} seconds.`);
-    }
+  const response = await fetch(AI_OPERATOR_BRIDGE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, presetId, state }),
+    signal: AbortSignal.timeout(AI_OPERATOR_REQUEST_TIMEOUT_MS),
+  });
+  const body = await response.json().catch(error => {
+    if (error instanceof SyntaxError) return {};
     throw error;
-  }
-  const body = await response.json().catch(() => ({}));
+  });
   if (!response.ok) {
-    throw new Error(body.error || `Bedrock bridge returned ${response.status}`);
+    const error = new Error(body.error || `Bedrock bridge returned ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
   if (body.contractVersion !== AI_OPERATOR_CONTRACT_VERSION) {
     throw new Error(`AI bridge is out of date. Restart npm run dev to load ${AI_OPERATOR_CONTRACT_VERSION}.`);
@@ -310,9 +307,7 @@ async function requestBedrockHealthWithRetry() {
 }
 
 function isBridgeConnectionError(error) {
-  if (error?.name === "TimeoutError") return true;
-  const message = error instanceof Error ? error.message : String(error);
-  return /failed to fetch|networkerror|load failed|connection|refused|unable to connect|did not respond/i.test(message);
+  return error instanceof TypeError || error?.name === "TimeoutError";
 }
 
 function useFactorySimulation({ controller = "manual" } = {}) {
@@ -915,7 +910,19 @@ function useFactorySimulation({ controller = "manual" } = {}) {
       let bedrockResult;
       let proposal;
       try {
-        bedrockResult = await requestBedrockOperator({ prompt, presetId, state: requestState });
+        const input = { prompt, presetId, state: requestState };
+        try {
+          bedrockResult = await requestBedrockOperator(input);
+        } catch (error) {
+          if (!isBridgeConnectionError(error) && ![502, 503, 504].includes(error.status)) throw error;
+          setAiProviderStatus({
+            label: "Amazon Bedrock",
+            status: "working",
+            message: "Checking the bridge and retrying your prompt once.",
+          });
+          await requestBedrockHealthWithRetry();
+          bedrockResult = await requestBedrockOperator(input);
+        }
         if (bedrockResult.text) {
           addAiMessage("assistant", bedrockResult.text);
         }
@@ -929,21 +936,19 @@ function useFactorySimulation({ controller = "manual" } = {}) {
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Bedrock operator failed.";
-        const bridgeOffline = isBridgeConnectionError(error);
-        if (bridgeOffline) {
+        const connectionFailed = isBridgeConnectionError(error);
+        if (connectionFailed) {
           aiProviderReadyRef.current = false;
           aiChatPreflightCompleteRef.current = false;
         }
-        addAiMessage(
-          "error",
-          bridgeOffline
-            ? `Bedrock bridge unavailable. Start it with npm run ai:bridge, then try again.`
-            : `Bedrock error: ${errorMessage}`,
-        );
+        const message = connectionFailed
+          ? `Could not get a reply from the local Bedrock bridge after retrying: ${errorMessage}`
+          : `Bedrock error: ${errorMessage}`;
+        addAiMessage("error", message);
         setAiProviderStatus({
           label: "Amazon Bedrock",
-          status: bridgeOffline ? "offline" : "error",
-          message: bridgeOffline ? AI_PROVIDER_OFFLINE.message : `Bedrock error: ${errorMessage}`,
+          status: "error",
+          message,
         });
         setAiThinking(false);
         return;

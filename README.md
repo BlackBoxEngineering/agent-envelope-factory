@@ -299,16 +299,16 @@ Those calls generate account activity that the signed-in customer can inspect in
 3. Open **Account** and copy the **User ID** for `VITE_AE_OWNER_USER_ID`.
 4. Open **Account -> API keys**, create or rotate a key, and copy it immediately for
    `VITE_AE_API_KEY`.
-5. Open **Projects**, create a project with these values, and then open it:
+5. Open **Domains → Create Domain**, enter these values, and open the new domain:
 
 ```yaml
-project group: factory-automation
-project id: logistic-control
+namespace: factory-automation
+domain id: logistic-control
 kind: robotics
 ```
 
-6. Under **Permissions**, derive one legitimacy-bound runtime permission for each role listed below.
-   The portal exposes the underlying signed object as a mint delegate. The current demo uses
+6. Open **Authority → Manage agent authority → Add delegate** for each role listed below.
+   Select **Create legitimacy state for this delegate** and confirm the state is allowed. The example settings are
    `any-signed-bot`, action indexes `0-10000`, `maxMints: 500`, `maxUsesPerAction: 1`, and a future
    expiry.
 7. For every role, copy the **handoff JSON** into the matching file in this repository and copy the
@@ -322,9 +322,9 @@ kind: robotics
 | Evidence authorities | `mint-delegate.evidence.json` | `VITE_AE_EVIDENCE_BOT_KEY` | `VITE_AE_EVIDENCE_MINT_MATERIAL` |
 | Governance evaluator | `mint-delegate.governance.json` | `VITE_AE_GOVERNANCE_BOT_KEY` | `VITE_AE_GOVERNANCE_MINT_MATERIAL` |
 
-The committed delegate files are examples tied to their issuing account head and legitimacy state.
-A different portal account must issue and use its own delegates rather than mixing credentials with
-the committed examples.
+The bundled handoffs belong to the factory demo account. For your own account, export your four
+delegates using **Copy handoff JSON**. Each export includes the delegate ID, signed legitimacy
+reference and domain metadata. Existing worker bot keys can be reused with `any-signed-bot`.
 
 ### 2. Generate the worker bot keys
 
@@ -377,15 +377,15 @@ RobotBot:
   resources: bay:*, trolley:*
 
 PlannerBot:
-  operations: propose-reroute, request-correction
+  operations: propose-reroute
   resources: bay:*, trolley:*, command:*
 
 Evidence authorities:
-  operations: attest-location, attest-safety
-  resources: bay:*, trolley:*, dock:*
+  operations: attest-location
+  resources: bay:*, trolley:*
 
 Governance evaluator:
-  operations: approve-legitimacy, suspend-legitimacy, repair-state
+  operations: repair-state
   resources: delegate:*, record:*, command:*
 ```
 

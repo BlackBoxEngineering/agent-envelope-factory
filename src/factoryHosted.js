@@ -167,7 +167,12 @@ function validateRoleDelegateOnce(role) {
   try {
     const delegateWithMetadata = role.delegate;
     const delegate = stripDelegateMetadata(delegateWithMetadata);
-    const delegateCheck = verifyMintDelegate(delegate, delegate.issuerAddress);
+    const domain = delegateWithMetadata.domainSummary;
+    if (!domain?.domainInfo || domain.canonicalDomainInfo !== canonicalJSON(domain.domainInfo) ||
+        domain.domainHash !== contentHash(domain.canonicalDomainInfo) || domain.domainHash !== delegate.domainHash) {
+      throw new Error(`${role.label} needs the matching domain metadata from Copy handoff JSON.`);
+    }
+    const delegateCheck = verifyMintDelegate(delegate, domain.domainAddress);
     if (!delegateCheck.valid) throw new Error(`${role.label} delegate failed local verification: ${delegateCheck.reason}`);
 
     for (const operation of role.operations) {
@@ -230,7 +235,8 @@ function buildHostedEnvelope(role, action, actionIndex, timeWindow) {
     },
     actionIndex,
     operation: action.operation,
-    resources: action.resources,
+    // Hosted grants match names case-sensitively. Order the set before signing the mint request.
+    resources: [...new Set(action.resources)].sort(),
     timeWindow,
     decayPolicy: { mode: "BOTH" },
     limits: { maxUses: 1, enforcement: "external" },
@@ -286,7 +292,6 @@ async function publishHostedFactoryCommand(config, command, options = {}) {
       role: robotRole,
       command,
       action: buildRoleAction(robotRole, command, Array.from(completed.values())),
-      order: roleOrder(robotRole),
     });
     completed.set(robotResult.roleId, robotResult);
   }
@@ -298,7 +303,6 @@ async function publishHostedFactoryCommand(config, command, options = {}) {
       role,
       command,
       action: buildRoleAction(role, command, Array.from(completed.values())),
-      order: roleOrder(role),
     })));
 
     settled.forEach((result) => {
@@ -361,16 +365,16 @@ function nextActionIndex(role, delegate, now) {
   }
 }
 
-async function publishHostedRoleAction({ config, role, command, action, order }) {
+async function publishHostedRoleAction({ config, role, command, action }) {
   const delegate = validateRoleDelegate(role);
 
-  const now = Date.now() + order;
+  const now = Date.now();
   const actionIndex = nextActionIndex(role, delegate, now);
   const timeWindow = {
-    notBefore: now - 30_000,
+    notBefore: Math.max(now - 30_000, delegate.timeWindow.notBefore ?? now - 30_000),
     notAfter: Math.min(now + 5 * 60 * 1000, delegate.timeWindow.notAfter ?? now + 5 * 60 * 1000),
   };
-  if (timeWindow.notAfter < timeWindow.notBefore) throw new Error(`${role.label} delegate is expired.`);
+  if (timeWindow.notAfter <= now) throw new Error(`${role.label} delegate is expired.`);
 
   const actionEnvelope = buildHostedEnvelope(role, action, actionIndex, timeWindow);
   let request;
@@ -395,6 +399,9 @@ async function publishHostedRoleAction({ config, role, command, action, order })
   if (!requestCheck.valid) throw new Error(`${role.label} mint request failed local verification: ${requestCheck.reason}`);
 
   const receipt = await hostedMint(config.apiKey, delegate, request);
+  if (receipt?.valid !== true || receipt.requestId !== request.requestId || receipt.delegateId !== delegate.delegateId) {
+    throw new Error(receipt?.reason || receipt?.error || `${role.label} hosted mint did not confirm this request and delegate.`);
+  }
   let capability;
   const mintMaterialBytes = hexToBytes(roleMintMaterial(config, role).trim());
   try {
@@ -431,6 +438,9 @@ async function publishHostedRoleAction({ config, role, command, action, order })
   if (!localSignature.valid) throw new Error(`${role.label} signature failed local verification.`);
 
   const registration = await hostedRegisterDelegated(config.apiKey, { record, request, delegateId: delegate.delegateId });
+  if (registration?.accepted !== true || registration.recordId !== record.recordId) {
+    throw new Error(`${role.label} hosted registration did not confirm this record.`);
+  }
   let report;
   try {
     report = await hostedVerify(config.apiKey, {
@@ -442,6 +452,9 @@ async function publishHostedRoleAction({ config, role, command, action, order })
       expectedActionEnvelopeHash: record.actionEnvelopeHash,
       correlationId: factoryCorrelationId(action.payload.detail.commandId),
     });
+    if (report?.valid !== false && (report?.valid !== true || report.recordId !== record.recordId || report.actionEnvelopeHash !== record.actionEnvelopeHash)) {
+      throw new Error(`${role.label} hosted verification did not confirm this record and envelope.`);
+    }
   } catch (err) {
     report = {
       valid: false,
@@ -646,6 +659,13 @@ async function hostedJson(url, init) {
   if (!response.ok) {
     const message = body?.error || body?.message || `Hosted request failed with ${response.status}`;
     throw new Error(message);
+  }
+  if (typeof body?.statusCode === "number" && typeof body.body === "string") {
+    const report = JSON.parse(body.body);
+    if (body.statusCode < 200 || body.statusCode >= 300) {
+      throw new Error(report?.error || report?.message || `Hosted request failed with ${body.statusCode}`);
+    }
+    return report;
   }
   return body;
 }
