@@ -18,7 +18,7 @@
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1128.0",
     "@vitejs/plugin-react": "latest",
-    "agent-envelope-assurance-sdk": "0.1.0",
+    "agent-envelope-assurance-sdk": "0.1.1",
     "agent-envelope-sdk": "^1.4.8",
     "lucide-react": "latest",
     "react": "latest",
